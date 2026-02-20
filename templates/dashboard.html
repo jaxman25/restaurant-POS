@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Restaurant POS Dashboard</title>
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <!-- Login Screen -->
+    <div id="login-screen" class="login-screen">
+        <div class="login-box">
+            <div class="login-header">
+                <i class="fas fa-utensils"></i>
+                <h2>Restaurant POS</h2>
+                <p>Enter your 4-digit PIN</p>
+            </div>
+            
+            <div class="pin-display" id="pin-display">••••</div>
+            
+            <div class="pin-pad">
+                <div class="pin-row">
+                    <button class="pin-btn" onclick="addPin(1)">1</button>
+                    <button class="pin-btn" onclick="addPin(2)">2</button>
+                    <button class="pin-btn" onclick="addPin(3)">3</button>
+                </div>
+                <div class="pin-row">
+                    <button class="pin-btn" onclick="addPin(4)">4</button>
+                    <button class="pin-btn" onclick="addPin(5)">5</button>
+                    <button class="pin-btn" onclick="addPin(6)">6</button>
+                </div>
+                <div class="pin-row">
+                    <button class="pin-btn" onclick="addPin(7)">7</button>
+                    <button class="pin-btn" onclick="addPin(8)">8</button>
+                    <button class="pin-btn" onclick="addPin(9)">9</button>
+                </div>
+                <div class="pin-row">
+                    <button class="pin-btn" onclick="clearPin()">C</button>
+                    <button class="pin-btn" onclick="addPin(0)">0</button>
+                    <button class="pin-btn" onclick="deletePin()">⌫</button>
+                </div>
+            </div>
+            
+            <button class="login-btn" onclick="login()">Login</button>
+            <div class="login-error" id="login-error"></div>
+            
+            <div class="demo-hint">
+                <p><strong>Demo PINs:</strong></p>
+                <p>👑 Admin: 1234 | 👔 Manager: 1111</p>
+                <p>👨‍🍳 Staff: 2222 | 👨‍🍳 Cook: 3333</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dashboard -->
+    <div id="dashboard" class="dashboard" style="display: none;">
+        <div class="dashboard-container">
+            <!-- Sidebar -->
+            <aside class="sidebar">
+                <div class="logo">
+                    <i class="fas fa-utensils"></i>
+                    <span>Restaurant POS</span>
+                </div>
+                
+                <nav class="nav-menu">
+                    <button class="nav-item active" onclick="switchTab('overview')" aria-label="Overview Dashboard">
+                        <i class="fas fa-chart-pie" aria-hidden="true"></i>
+                        <span>Overview</span>
+                    </button>
+                    <button class="nav-item" onclick="switchTab('pos')" aria-label="Point of Sale">
+                        <i class="fas fa-cash-register" aria-hidden="true"></i>
+                        <span>Point of Sale</span>
+                    </button>
+                    <button class="nav-item" onclick="switchTab('kitchen')" aria-label="Kitchen Display System">
+                        <i class="fas fa-kitchen-set" aria-hidden="true"></i>
+                        <span>Kitchen Display</span>
+                        <span class="badge warning" id="kitchen-badge" aria-label="Active kitchen orders">0</span>
+                    </button>
+                    <button class="nav-item" onclick="switchTab('inventory')" aria-label="Inventory Management" id="inventory-nav">
+                        <i class="fas fa-boxes" aria-hidden="true"></i>
+                        <span>Inventory</span>
+                        <span class="badge danger" id="inventory-badge" aria-label="Low stock items">0</span>
+                    </button>
+                    <button class="nav-item" onclick="switchTab('reports')" aria-label="Reports and Analytics" id="reports-nav">
+                        <i class="fas fa-chart-line" aria-hidden="true"></i>
+                        <span>Reports</span>
+                    </button>
+                </nav>
+                
+                <div class="user-info">
+                    <div class="user-avatar">
+                        <i class="fas fa-user-circle" aria-hidden="true"></i>
+                    </div>
+                    <div class="user-details">
+                        <div class="user-name" id="staff-name">Loading...</div>
+                        <div class="user-role" id="staff-role"></div>
+                    </div>
+                    <button class="logout-btn" onclick="logout()" aria-label="Log out of system">
+                        <i class="fas fa-sign-out-alt" aria-hidden="true"></i>
+                    </button>
+                </div>
+            </aside>
+
+            <!-- Main Content -->
+            <main class="main-content">
+                <!-- Top Bar -->
+                <div class="top-bar">
+                    <div class="page-title" id="page-title">Overview</div>
+                    <div class="top-bar-actions">
+                        <div class="date-time" id="current-datetime" aria-live="polite"></div>
+                        <button class="btn btn-primary" onclick="refreshData()" aria-label="Refresh dashboard data">
+                            <i class="fas fa-sync-alt" aria-hidden="true"></i> Refresh
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Overview Tab -->
+                <div id="overview-tab" class="tab-content active" role="tabpanel">
+                    <!-- KPI Cards -->
+                    <div class="kpi-grid">
+                        <div class="kpi-card">
+                            <div class="kpi-icon" aria-hidden="true"><i class="fas fa-dollar-sign"></i></div>
+                            <div class="kpi-info">
+                                <div class="kpi-label">Today's Sales</div>
+                                <div class="kpi-value" id="today-sales">$2,450.75</div>
+                            </div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-icon" aria-hidden="true"><i class="fas fa-shopping-bag"></i></div>
+                            <div class="kpi-info">
+                                <div class="kpi-label">Orders Today</div>
+                                <div class="kpi-value" id="today-orders">42</div>
+                            </div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-icon" aria-hidden="true"><i class="fas fa-users"></i></div>
+                            <div class="kpi-info">
+                                <div class="kpi-label">Active Tables</div>
+                                <div class="kpi-value" id="active-tables">5/8</div>
+                            </div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-icon" aria-hidden="true"><i class="fas fa-chart-line"></i></div>
+                            <div class="kpi-info">
+                                <div class="kpi-label">Avg Order Value</div>
+                                <div class="kpi-value" id="avg-order">$58.35</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Charts Row -->
+                    <div class="charts-row">
+                        <div class="chart-card">
+                            <div class="chart-header">
+                                <h3 id="hourly-chart-title">Sales by Hour</h3>
+                                <label for="hourly-period" class="sr-only">Select time period for hourly sales</label>
+                                <select id="hourly-period" onchange="updateHourlyChart()" aria-labelledby="hourly-chart-title">
+                                    <option value="today">Today</option>
+                                    <option value="yesterday">Yesterday</option>
+                                </select>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="hourlyChart" aria-label="Hourly sales chart" role="img"></canvas>
+                            </div>
+                        </div>
+                        
+                        <div class="chart-card">
+                            <div class="chart-header">
+                                <h3 id="category-chart-title">Sales by Category</h3>
+                                <label for="category-period" class="sr-only">Select time period for category sales</label>
+                                <select id="category-period" onchange="updateCategoryChart()" aria-labelledby="category-chart-title">
+                                    <option value="today">Today</option>
+                                    <option value="week">This Week</option>
+                                </select>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="categoryChart" aria-label="Category sales chart" role="img"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Bottom Cards -->
+                    <div class="bottom-grid">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3 id="top-items-title">Top Selling Items</h3>
+                            </div>
+                            <div class="card-body">
+                                <table class="table" aria-labelledby="top-items-title">
+                                    <thead>
+                                        <tr>
+                                            <th scope="col">Item</th>
+                                            <th scope="col">Qty</th>
+                                            <th scope="col">Revenue</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="top-items-body">
+                                        <tr><td colspan="3" class="loading">Loading...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <div class="card-header">
+                                <h3 id="low-stock-title">Low Stock Alerts</h3>
+                            </div>
+                            <div class="card-body" id="low-stock-alerts" aria-labelledby="low-stock-title">
+                                <div class="loading">Loading...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- POS Tab -->
+                <div id="pos-tab" class="tab-content" role="tabpanel">
+                    <div class="pos-container">
+                        <div class="pos-menu">
+                            <h2 id="menu-title">Menu Items</h2>
+                            <label for="menu-search" class="sr-only">Search menu items</label>
+                            <input type="text" id="menu-search" class="search-box" placeholder="Search menu..." onkeyup="searchMenu()" aria-label="Search menu items">
+                            
+                            <div class="category-tabs" role="tablist" aria-label="Menu categories">
+                                <button class="category-btn active" onclick="filterMenu('all')" role="tab" aria-selected="true">All</button>
+                                <button class="category-btn" onclick="filterMenu('Mains')" role="tab" aria-selected="false">🍔 Mains</button>
+                                <button class="category-btn" onclick="filterMenu('Sides')" role="tab" aria-selected="false">🍟 Sides</button>
+                                <button class="category-btn" onclick="filterMenu('Drinks')" role="tab" aria-selected="false">🥤 Drinks</button>
+                                <button class="category-btn" onclick="filterMenu('Appetizers')" role="tab" aria-selected="false">🍗 Appetizers</button>
+                                <button class="category-btn" onclick="filterMenu('Desserts')" role="tab" aria-selected="false">🍰 Desserts</button>
+                            </div>
+                            
+                            <div class="menu-grid" id="menu-grid" aria-label="Menu items grid"></div>
+                        </div>
+                        
+                        <div class="pos-cart">
+                            <h2 id="cart-title">Current Order</h2>
+                            <label for="table-select" class="sr-only">Select table for order</label>
+                            <select id="table-select" class="table-select" aria-label="Select table for order">
+                                <option value="1">Table 1</option>
+                                <option value="2">Table 2</option>
+                                <option value="3">Table 3</option>
+                                <option value="4">Table 4</option>
+                                <option value="5">Table 5</option>
+                                <option value="6">Table 6</option>
+                                <option value="7">Table 7</option>
+                                <option value="8">Table 8</option>
+                                <option value="takeout">🥡 Takeout</option>
+                            </select>
+                            
+                            <div class="cart-items" id="cart-items" aria-live="polite" aria-label="Current order items">
+                                <div class="empty-cart">No items in order</div>
+                            </div>
+                            
+                            <div class="cart-summary" aria-label="Order summary">
+                                <div class="summary-row">
+                                    <span>Subtotal:</span>
+                                    <span id="cart-subtotal">$0.00</span>
+                                </div>
+                                <div class="summary-row">
+                                    <span>Tax (8.5%):</span>
+                                    <span id="cart-tax">$0.00</span>
+                                </div>
+                                <div class="summary-row total">
+                                    <span>Total:</span>
+                                    <span id="cart-total">$0.00</span>
+                                </div>
+                            </div>
+                            
+                            <div class="cart-actions">
+                                <button class="btn btn-secondary" onclick="clearCart()" aria-label="Clear all items from cart">Clear</button>
+                                <button class="btn btn-primary" onclick="processPayment()" id="checkout-btn" disabled aria-label="Proceed to payment">Process Payment</button>
+                            </div>
+                            
+                            <div class="order-staff-info" id="order-staff-info">
+                                <i class="fas fa-user"></i> <span id="current-staff-name"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Kitchen Tab -->
+                <div id="kitchen-tab" class="tab-content" role="tabpanel">
+                    <div class="kitchen-header">
+                        <h2 id="kitchen-title">Kitchen Display System</h2>
+                        <div class="kitchen-controls">
+                            <div class="kitchen-stats" aria-label="Kitchen order statistics">
+                                <span class="stat-badge new">New: <span id="new-count">0</span></span>
+                                <span class="stat-badge preparing">Preparing: <span id="preparing-count">0</span></span>
+                                <span class="stat-badge ready">Ready: <span id="ready-count">0</span></span>
+                            </div>
+                            <button class="btn btn-secondary" onclick="clearCompletedOrders()" aria-label="Clear completed orders" id="clear-completed-btn">
+                                <i class="fas fa-trash"></i> Clear Completed
+                            </button>
+                        </div>
+                    </div>
+                    <div class="kitchen-grid" id="kitchen-orders" aria-label="Active kitchen orders"></div>
+                </div>
+
+                <!-- Inventory Tab -->
+                <div id="inventory-tab" class="tab-content" role="tabpanel">
+                    <div class="inventory-header">
+                        <h2 id="inventory-title">Inventory Management</h2>
+                        <button class="btn btn-primary" onclick="showReceiveStockModal()" aria-label="Receive new stock" id="receive-stock-btn">Receive Stock</button>
+                    </div>
+                    
+                    <div class="inventory-stats" aria-label="Inventory statistics">
+                        <div class="stat-card">
+                            <div class="stat-value" id="total-inventory-value">$12,500</div>
+                            <div class="stat-label">Total Value</div>
+                        </div>
+                        <div class="stat-card warning">
+                            <div class="stat-value" id="low-stock-count">3</div>
+                            <div class="stat-label">Low Stock</div>
+                        </div>
+                    </div>
+                    
+                    <div class="inventory-table-container">
+                        <table class="inventory-table" aria-labelledby="inventory-title">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Item</th>
+                                    <th scope="col">Stock</th>
+                                    <th scope="col">Unit</th>
+                                    <th scope="col">Status</th>
+                                    <th scope="col">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="inventory-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Reports Tab -->
+                <div id="reports-tab" class="tab-content" role="tabpanel">
+                    <div class="reports-header">
+                        <h2 id="reports-title">Sales Reports</h2>
+                        <div class="report-controls">
+                            <label for="report-period" class="sr-only">Select report period</label>
+                            <select id="report-period" onchange="loadReports()" aria-label="Select report period">
+                                <option value="today">Today</option>
+                                <option value="week">This Week</option>
+                                <option value="month">This Month</option>
+                            </select>
+                            <button class="btn btn-secondary" onclick="exportReport()" aria-label="Export report">
+                                <i class="fas fa-download"></i> Export
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="reports-grid" id="report-data" aria-label="Report data"></div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Payment Modal -->
+    <div id="payment-modal" class="modal" role="dialog" aria-labelledby="payment-modal-title" aria-modal="true">
+        <div class="modal-content" style="max-width: 450px;">
+            <div class="modal-header">
+                <h3 id="payment-modal-title">Process Payment</h3>
+                <button class="close" onclick="closePaymentModal()" aria-label="Close payment modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <!-- Order Summary -->
+                <div class="payment-order-summary">
+                    <h4>Order Summary</h4>
+                    <div class="payment-items" id="payment-items">
+                        <!-- Items will be populated by JS -->
+                    </div>
+                    <div class="payment-totals">
+                        <div class="payment-row">
+                            <span>Subtotal:</span>
+                            <span id="payment-subtotal">$0.00</span>
+                        </div>
+                        <div class="payment-row">
+                            <span>Tax (8.5%):</span>
+                            <span id="payment-tax">$0.00</span>
+                        </div>
+                        <div class="payment-row total">
+                            <span>Total:</span>
+                            <span id="payment-total">$0.00</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Payment Method Selection -->
+                <div class="payment-method-section">
+                    <h4>Payment Method</h4>
+                    <div class="payment-methods">
+                        <button class="payment-method-btn active" onclick="selectPaymentMethod('cash')" id="method-cash">
+                            <i class="fas fa-money-bill-wave"></i>
+                            <span>Cash</span>
+                        </button>
+                        <button class="payment-method-btn" onclick="selectPaymentMethod('card')" id="method-card">
+                            <i class="fas fa-credit-card"></i>
+                            <span>Card</span>
+                        </button>
+                        <button class="payment-method-btn" onclick="selectPaymentMethod('gift')" id="method-gift">
+                            <i class="fas fa-gift"></i>
+                            <span>Gift Card</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Cash Payment Fields -->
+                <div id="cash-payment-fields" class="payment-fields">
+                    <div class="form-group">
+                        <label for="amount-tendered">Amount Tendered</label>
+                        <div class="input-group">
+                            <span class="input-group-text">$</span>
+                            <input type="number" id="amount-tendered" class="form-control" step="0.01" min="0" oninput="calculateChange()" placeholder="0.00">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="change-amount">Change Due</label>
+                        <div class="input-group">
+                            <span class="input-group-text">$</span>
+                            <input type="text" id="change-amount" class="form-control" readonly value="0.00">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Card Payment Fields -->
+                <div id="card-payment-fields" class="payment-fields" style="display: none;">
+                    <div class="card-icons">
+                        <i class="fab fa-cc-visa"></i>
+                        <i class="fab fa-cc-mastercard"></i>
+                        <i class="fab fa-cc-amex"></i>
+                        <i class="fab fa-cc-discover"></i>
+                    </div>
+                    <div class="form-group">
+                        <label for="card-number">Card Number</label>
+                        <input type="text" id="card-number" class="form-control" placeholder="**** **** **** ****" maxlength="19">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="card-expiry">Expiry</label>
+                            <input type="text" id="card-expiry" class="form-control" placeholder="MM/YY" maxlength="5">
+                        </div>
+                        <div class="form-group">
+                            <label for="card-cvv">CVV</label>
+                            <input type="text" id="card-cvv" class="form-control" placeholder="***" maxlength="3">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="card-name">Name on Card</label>
+                        <input type="text" id="card-name" class="form-control" placeholder="John Doe">
+                    </div>
+                </div>
+
+                <!-- Gift Card Fields -->
+                <div id="gift-payment-fields" class="payment-fields" style="display: none;">
+                    <div class="form-group">
+                        <label for="gift-card-number">Gift Card Number</label>
+                        <input type="text" id="gift-card-number" class="form-control" placeholder="Enter gift card number">
+                    </div>
+                    <div class="form-group">
+                        <label for="gift-card-pin">PIN (if required)</label>
+                        <input type="password" id="gift-card-pin" class="form-control" placeholder="****">
+                    </div>
+                    <div class="gift-balance" id="gift-balance" style="display: none;">
+                        <span>Balance: </span>
+                        <span id="gift-balance-amount">$50.00</span>
+                    </div>
+                </div>
+
+                <!-- Tip Section -->
+                <div class="tip-section">
+                    <h4>Add Tip</h4>
+                    <div class="tip-buttons">
+                        <button class="tip-btn" onclick="addTip(0)">No Tip</button>
+                        <button class="tip-btn" onclick="addTip(15)">15%</button>
+                        <button class="tip-btn" onclick="addTip(18)">18%</button>
+                        <button class="tip-btn" onclick="addTip(20)">20%</button>
+                        <button class="tip-btn" onclick="customTip()">Custom</button>
+                    </div>
+                    <div id="custom-tip-field" style="display: none; margin-top: 10px;">
+                        <div class="input-group">
+                            <span class="input-group-text">$</span>
+                            <input type="number" id="custom-tip-amount" class="form-control" step="0.01" min="0" placeholder="Enter amount" onchange="applyCustomTip()">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closePaymentModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="completePayment()" id="complete-payment-btn">Complete Payment</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Receive Stock Modal -->
+    <div id="receive-stock-modal" class="modal" role="dialog" aria-labelledby="receive-modal-title" aria-modal="true">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="receive-modal-title">Receive Stock</h3>
+                <button class="close" onclick="closeReceiveStockModal()" aria-label="Close modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="receive-item">Select Item</label>
+                    <select id="receive-item" class="form-control" aria-label="Select item to receive">
+                        <option value="">-- Select Item --</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="receive-quantity">Quantity</label>
+                    <input type="number" id="receive-quantity" class="form-control" placeholder="Quantity" aria-label="Quantity to receive">
+                </div>
+                <button class="btn btn-primary" onclick="receiveStock()" aria-label="Receive stock">Receive Stock</button>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+        
+        .order-staff-info {
+            margin-top: 10px;
+            padding: 8px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            font-size: 13px;
+            color: #2c3e50;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .order-staff-info i {
+            color: #27ae60;
+        }
+
+        /* Payment Modal Styles */
+        .payment-order-summary {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .payment-order-summary h4 {
+            margin: 0 0 10px 0;
+            color: #2c3e50;
+        }
+
+        .payment-items {
+            max-height: 150px;
+            overflow-y: auto;
+            margin-bottom: 10px;
+        }
+
+        .payment-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            font-size: 14px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .payment-item:last-child {
+            border-bottom: none;
+        }
+
+        .payment-totals {
+            border-top: 2px solid #dee2e6;
+            padding-top: 10px;
+        }
+
+        .payment-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+
+        .payment-row.total {
+            font-size: 18px;
+            font-weight: bold;
+            color: #2c3e50;
+            margin-top: 5px;
+            padding-top: 5px;
+            border-top: 1px solid #dee2e6;
+        }
+
+        .payment-method-section {
+            margin-bottom: 20px;
+        }
+
+        .payment-method-section h4 {
+            margin: 0 0 10px 0;
+            color: #2c3e50;
+        }
+
+        .payment-methods {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+        }
+
+        .payment-method-btn {
+            padding: 12px;
+            border: 2px solid #dee2e6;
+            background: white;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+            transition: all 0.3s;
+        }
+
+        .payment-method-btn i {
+            font-size: 24px;
+        }
+
+        .payment-method-btn:hover {
+            border-color: #3498db;
+            background: #f0f8ff;
+        }
+
+        .payment-method-btn.active {
+            border-color: #2c3e50;
+            background: #e8f0fe;
+        }
+
+        .payment-fields {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .input-group {
+            display: flex;
+            align-items: center;
+        }
+
+        .input-group-text {
+            padding: 10px;
+            background: #e9ecef;
+            border: 1px solid #ced4da;
+            border-right: none;
+            border-radius: 5px 0 0 5px;
+        }
+
+        .input-group .form-control {
+            border-radius: 0 5px 5px 0;
+        }
+
+        .card-icons {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 15px;
+            font-size: 24px;
+            color: #6c757d;
+        }
+
+        .card-icons i {
+            cursor: default;
+        }
+
+        .gift-balance {
+            margin-top: 10px;
+            padding: 10px;
+            background: #e8f5e9;
+            border-radius: 5px;
+            color: #27ae60;
+            font-weight: bold;
+        }
+
+        .tip-section {
+            border-top: 1px solid #dee2e6;
+            padding-top: 15px;
+        }
+
+        .tip-section h4 {
+            margin: 0 0 10px 0;
+            color: #2c3e50;
+        }
+
+        .tip-buttons {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .tip-btn {
+            padding: 8px 16px;
+            border: 1px solid #dee2e6;
+            background: white;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .tip-btn:hover {
+            background: #2c3e50;
+            color: white;
+            border-color: #2c3e50;
+        }
+    </style>
+
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>

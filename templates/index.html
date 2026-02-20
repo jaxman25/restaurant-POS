@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Restaurant POS System</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🍔 Restaurant POS System</h1>
+            <div class="status-bar">
+                <span id="connection-status" class="status connected">✅ Connected</span>
+                <span id="datetime"></span>
+            </div>
+        </header>
+
+        <!-- Daily Specials Banner -->
+        <div id="specials-banner" class="specials-banner">
+            <!-- Specials will load here -->
+        </div>
+
+        <div class="pos-layout">
+            <!-- Menu Section (Left Side) -->
+            <div class="menu-section">
+                <h2>Menu Items</h2>
+                
+                <!-- Search Box -->
+                <div class="search-box">
+                    <input type="text" id="search-input" placeholder="🔍 Search menu items..." onkeyup="searchMenu()">
+                </div>
+                
+                <!-- Category Tabs -->
+                <div class="category-tabs">
+                    <button class="category-btn active" onclick="filterCategory('all')">All</button>
+                    <button class="category-btn" onclick="filterCategory('Combo')">🍱 Combos</button>
+                    <button class="category-btn" onclick="filterCategory('Appetizer')">🍗 Appetizers</button>
+                    <button class="category-btn" onclick="filterCategory('Main')">🍔 Mains</button>
+                    <button class="category-btn" onclick="filterCategory('Side')">🍟 Sides</button>
+                    <button class="category-btn" onclick="filterCategory('Drink')">🥤 Drinks</button>
+                    <button class="category-btn" onclick="filterCategory('Dessert')">🍰 Desserts</button>
+                </div>
+                
+                <!-- Menu Items Grid -->
+                <div id="menu-items" class="menu-grid">
+                    <!-- Menu items will load here -->
+                    <div class="loading">Loading menu...</div>
+                </div>
+            </div>
+
+            <!-- Order Section (Right Side) -->
+            <div class="order-section">
+                <h2>Current Order</h2>
+                <div class="order-info">
+                    <input type="text" id="table-number" placeholder="Table #" value="1">
+                    <textarea id="order-instructions" placeholder="Special instructions for entire order..." rows="2"></textarea>
+                </div>
+                
+                <div id="order-items" class="order-items">
+                    <!-- Order items will appear here -->
+                    <div class="empty-order">No items in order</div>
+                </div>
+                
+                <div class="order-total">
+                    <span>Total:</span>
+                    <span id="order-total">$0.00</span>
+                </div>
+                
+                <div class="order-actions">
+                    <button class="btn btn-primary" onclick="sendToKitchen()" id="send-btn" disabled>
+                        🍳 Send to Kitchen
+                    </button>
+                    <button class="btn btn-secondary" onclick="clearOrder()">
+                        ❌ Clear Order
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Kitchen Display Section (Bottom) -->
+        <div class="kds-section">
+            <h2>👨‍🍳 Kitchen Display System</h2>
+            <div id="kitchen-orders" class="kitchen-grid">
+                <!-- Kitchen orders will appear here -->
+                <div class="loading">Waiting for orders...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modifier Modal -->
+    <div id="modifier-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-product-name">Customize Your Item</h3>
+                <span class="close" onclick="closeModifierModal()">&times;</span>
+            </div>
+            <div class="modal-body" id="modal-body">
+                <!-- Modifiers will load here -->
+            </div>
+            <div class="modal-footer">
+                <div class="modal-price" id="modal-price">$0.00</div>
+                <div class="modal-actions">
+                    <button class="btn btn-secondary" onclick="closeModifierModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="addCustomizedToOrder()">Add to Order</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/script.js"></script>
+</body>
+</html>
