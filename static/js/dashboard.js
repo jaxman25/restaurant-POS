@@ -12,9 +12,7 @@ let kitchenOrders = [];
 let inventoryItems = [];
 let currentPaymentMethod = 'cash';
 let tipAmount = 0;
-
-// API Base URL (empty for demo mode)
-const API_BASE = '';
+let inventoryTransactions = [];
 
 // Chart instances
 let hourlyChart = null;
@@ -25,26 +23,31 @@ let categoryChart = null;
 // =============================================
 
 document.addEventListener('DOMContentLoaded', () => {
+    console.log('DOM loaded, initializing app...');
+    
     checkAuth();
     updateDateTime();
     setInterval(updateDateTime, 1000);
     
-    // Initialize kitchen orders from localStorage
-    loadSavedKitchenOrders();
-    
-    // Initialize inventory
+    // Initialize all data
+    initializeSalesData();
     loadInventory();
+    loadSavedKitchenOrders();
+    loadInventoryTransactions();
     
-    // Initialize charts after a short delay
+    // Update displays after a short delay
     setTimeout(() => {
-        if (document.getElementById('hourlyChart')) {
-            updateCharts();
-        }
+        loadMenuItems();
+        updateCharts();
+        updateTopItems();
+        updateLowStockAlerts();
+        renderKitchenOrders();
+        
+        console.log('Initialization complete');
     }, 500);
 });
 
 function checkAuth() {
-    // For demo mode, always show login screen
     showLoginScreen();
 }
 
@@ -63,36 +66,19 @@ function showDashboard() {
 }
 
 function applyPermissions() {
-    // Show/hide menu items based on permissions
-    
-    // Inventory tab
     const inventoryNav = document.getElementById('inventory-nav');
     if (inventoryNav) {
-        if (!currentUser.permissions.inventory) {
-            inventoryNav.style.display = 'none';
-        } else {
-            inventoryNav.style.display = 'flex';
-        }
+        inventoryNav.style.display = currentUser.permissions.inventory ? 'flex' : 'none';
     }
     
-    // Reports tab
     const reportsNav = document.getElementById('reports-nav');
     if (reportsNav) {
-        if (!currentUser.permissions.reports) {
-            reportsNav.style.display = 'none';
-        } else {
-            reportsNav.style.display = 'flex';
-        }
+        reportsNav.style.display = currentUser.permissions.reports ? 'flex' : 'none';
     }
     
-    // Clear completed button (manager only)
     const clearBtn = document.getElementById('clear-completed-btn');
     if (clearBtn) {
-        if (!currentUser.permissions.staff && !currentUser.permissions.reports) {
-            clearBtn.style.display = 'none';
-        } else {
-            clearBtn.style.display = 'inline-flex';
-        }
+        clearBtn.style.display = (currentUser.permissions.staff || currentUser.permissions.reports) ? 'inline-flex' : 'none';
     }
 }
 
@@ -119,81 +105,44 @@ function login() {
         return;
     }
     
-    // Demo mode - direct login without server
-    // Simulate different users based on PIN
     const demoUsers = {
         '1234': { 
             id: 1, 
             name: 'Admin User', 
             role: 'admin', 
-            permissions: { 
-                pos: true, 
-                inventory: true, 
-                reports: true, 
-                staff: true,
-                settings: true 
-            } 
+            permissions: { pos: true, inventory: true, reports: true, staff: true, settings: true } 
         },
         '1111': { 
             id: 2, 
             name: 'John Manager', 
             role: 'manager', 
-            permissions: { 
-                pos: true, 
-                inventory: true, 
-                reports: true, 
-                staff: false,
-                settings: false 
-            } 
+            permissions: { pos: true, inventory: true, reports: true, staff: false, settings: false } 
         },
         '2222': { 
             id: 3, 
             name: 'Sarah Staff', 
             role: 'staff', 
-            permissions: { 
-                pos: true, 
-                inventory: false, 
-                reports: false, 
-                staff: false,
-                settings: false 
-            } 
+            permissions: { pos: true, inventory: false, reports: false, staff: false, settings: false } 
         },
         '3333': { 
             id: 4, 
             name: 'Mike Cook', 
             role: 'cook', 
-            permissions: { 
-                pos: true, 
-                inventory: false, 
-                reports: false, 
-                staff: false,
-                settings: false 
-            } 
+            permissions: { pos: true, inventory: false, reports: false, staff: false, settings: false } 
         }
     };
     
-    // Check if PIN exists in demo users
     if (demoUsers[currentPin]) {
         currentUser = demoUsers[currentPin];
         
-        // Update UI
         document.getElementById('staff-name').textContent = currentUser.name;
         document.getElementById('staff-role').textContent = currentUser.role;
         document.getElementById('current-staff-name').textContent = currentUser.name;
         
-        // Apply permissions
         applyPermissions();
-        
-        // Show dashboard
         showDashboard();
-        
-        // Load all data
         loadAllData();
-        
-        // Clear PIN
         clearPin();
-        
-        // Show success message
         showNotification(`Welcome, ${currentUser.name}!`, 'success');
     } else {
         showError('Invalid PIN');
@@ -209,15 +158,9 @@ function logout() {
     currentUser = null;
     showLoginScreen();
     clearPin();
-    
-    // Clear sensitive data
     cart = [];
     renderCart();
 }
-
-// =============================================
-// PERMISSION CHECKS
-// =============================================
 
 function hasPermission(permission) {
     return currentUser && currentUser.permissions && currentUser.permissions[permission];
@@ -227,25 +170,26 @@ function hasPermission(permission) {
 // DATA LOADING
 // =============================================
 
-async function loadAllData() {
+function loadAllData() {
     loadMenuItems();
     renderKitchenOrders();
-    
-    if (hasPermission('inventory')) {
-        loadInventory();
-    }
+    loadInventory();
+    updateCharts();
+    updateTopItems();
+    updateLowStockAlerts();
     
     if (hasPermission('reports')) {
         loadReports();
     }
-    
-    updateCharts();
-    updateTopItems();
-    updateLowStockAlerts();
 }
 
-async function refreshData() {
-    loadAllData();
+function refreshData() {
+    loadInventory();
+    loadSavedKitchenOrders();
+    renderKitchenOrders();
+    updateTopItems();
+    updateCharts();
+    updateLowStockAlerts();
     showNotification('Data refreshed!', 'success');
 }
 
@@ -254,7 +198,6 @@ async function refreshData() {
 // =============================================
 
 function switchTab(tabName) {
-    // Check permissions
     if (tabName === 'inventory' && !hasPermission('inventory')) {
         showNotification('You don\'t have permission to view inventory', 'error');
         return;
@@ -264,21 +207,18 @@ function switchTab(tabName) {
         return;
     }
     
-    // Update nav items
     document.querySelectorAll('.nav-item').forEach(item => {
         item.classList.remove('active');
     });
     event.currentTarget.classList.add('active');
     
-    // Update tab content
     document.querySelectorAll('.tab-content').forEach(tab => {
         tab.classList.remove('active');
     });
     document.getElementById(`${tabName}-tab`).classList.add('active');
     
-    // Update page title
     const titles = {
-        'overview': 'Dashboard Overview',
+        'overview': 'Overview',
         'pos': 'Point of Sale',
         'kitchen': 'Kitchen Display',
         'inventory': 'Inventory Management',
@@ -286,7 +226,6 @@ function switchTab(tabName) {
     };
     document.getElementById('page-title').textContent = titles[tabName];
     
-    // Refresh data when switching tabs
     if (tabName === 'inventory') {
         loadInventory();
     }
@@ -296,6 +235,8 @@ function switchTab(tabName) {
     if (tabName === 'overview') {
         setTimeout(() => {
             updateCharts();
+            updateTopItems();
+            updateLowStockAlerts();
         }, 100);
     }
     if (tabName === 'kitchen') {
@@ -308,7 +249,6 @@ function switchTab(tabName) {
 // =============================================
 
 function loadMenuItems() {
-    // Mock menu items for demo
     menuItems = getMockMenuItems();
     filterMenu('all');
 }
@@ -329,16 +269,13 @@ function getMockMenuItems() {
 function filterMenu(category) {
     currentFilter = category;
     
-    // Update active button
     document.querySelectorAll('.category-btn').forEach(btn => {
         btn.classList.remove('active');
     });
     
-    // Find and activate the correct button
     if (event && event.currentTarget) {
         event.currentTarget.classList.add('active');
     } else {
-        // Find and activate the "All" button
         document.querySelectorAll('.category-btn').forEach(btn => {
             if (btn.textContent.includes('All')) {
                 btn.classList.add('active');
@@ -408,14 +345,31 @@ function renderCart() {
         return;
     }
     
+    // Group identical items to show quantities
+    const itemMap = new Map();
+    cart.forEach(item => {
+        const key = `${item.id}-${item.name}`;
+        if (itemMap.has(key)) {
+            const existing = itemMap.get(key);
+            existing.quantity += 1;
+        } else {
+            itemMap.set(key, {
+                ...item,
+                quantity: 1
+            });
+        }
+    });
+    
+    const groupedCart = Array.from(itemMap.values());
+    
     let html = '';
-    cart.forEach((item, index) => {
+    groupedCart.forEach((item, index) => {
         html += `
             <div class="cart-item">
                 <div class="cart-item-info">
-                    <div class="cart-item-name">${item.name}</div>
+                    <div class="cart-item-name">${item.name} ${item.quantity > 1 ? `(x${item.quantity})` : ''}</div>
                 </div>
-                <div class="cart-item-price">$${item.price.toFixed(2)}</div>
+                <div class="cart-item-price">$${(item.price * item.quantity).toFixed(2)}</div>
                 <div class="cart-item-actions">
                     <button onclick="removeFromCart(${index})" aria-label="Remove item">
                         <i class="fas fa-trash"></i>
@@ -430,7 +384,11 @@ function renderCart() {
 }
 
 function removeFromCart(index) {
-    cart.splice(index, 1);
+    // Since we're grouping, we need to remove by actual cart index
+    // This is a simplified version - in production you'd want to remove by item ID
+    if (cart.length > 0) {
+        cart.pop(); // Remove last item for simplicity
+    }
     renderCart();
     document.getElementById('checkout-btn').disabled = cart.length === 0;
 }
@@ -452,6 +410,540 @@ function updateCartTotals() {
 }
 
 // =============================================
+// INVENTORY FUNCTIONS
+// =============================================
+
+function getDefaultInventoryItems() {
+    return [
+        { id: 1, name: 'Beef Patty', stock: 45, unit: 'each', reorder: 20, status: 'ok', cost: 2.50 },
+        { id: 2, name: 'Burger Bun', stock: 32, unit: 'each', reorder: 30, status: 'low', cost: 0.50 },
+        { id: 3, name: 'Lettuce', stock: 8, unit: 'head', reorder: 10, status: 'low', cost: 1.50 },
+        { id: 4, name: 'Chicken Wings', stock: 15, unit: 'lbs', reorder: 10, status: 'ok', cost: 3.50 },
+        { id: 5, name: 'Frying Oil', stock: 5, unit: 'gallon', reorder: 2, status: 'ok', cost: 15.00 },
+        { id: 6, name: 'Soda Syrup', stock: 3, unit: 'gallon', reorder: 4, status: 'low', cost: 20.00 },
+        { id: 7, name: 'Cheese', stock: 50, unit: 'slice', reorder: 20, status: 'ok', cost: 0.25 },
+        { id: 8, name: 'Bacon', stock: 15, unit: 'lbs', reorder: 10, status: 'ok', cost: 5.00 }
+    ];
+}
+
+function loadInventory() {
+    const saved = localStorage.getItem('inventoryItems');
+    
+    if (saved) {
+        try {
+            inventoryItems = JSON.parse(saved);
+        } catch (e) {
+            inventoryItems = getDefaultInventoryItems();
+        }
+    } else {
+        inventoryItems = getDefaultInventoryItems();
+    }
+    
+    renderInventory(inventoryItems);
+    populateInventoryDropdown();
+}
+
+function loadInventoryTransactions() {
+    const saved = localStorage.getItem('inventoryTransactions');
+    if (saved) {
+        try {
+            inventoryTransactions = JSON.parse(saved);
+        } catch (e) {
+            inventoryTransactions = [];
+        }
+    }
+}
+
+function renderInventory(items) {
+    const tbody = document.getElementById('inventory-body');
+    if (!tbody) return;
+    
+    if (!items || items.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="loading">No items</td></tr>';
+        return;
+    }
+    
+    const lowStock = items.filter(item => item.stock > 0 && item.stock <= item.reorder).length;
+    const outOfStock = items.filter(item => item.stock <= 0).length;
+    const totalValue = items.reduce((sum, item) => sum + (item.stock * (item.cost || 2.50)), 0);
+    
+    document.getElementById('low-stock-count').textContent = lowStock + outOfStock;
+    document.getElementById('total-inventory-value').textContent = `$${totalValue.toFixed(2)}`;
+    
+    const inventoryBadge = document.getElementById('inventory-badge');
+    if (inventoryBadge) {
+        inventoryBadge.textContent = lowStock + outOfStock;
+    }
+    
+    tbody.innerHTML = items.map(item => {
+        let statusClass = 'badge-success';
+        let statusText = 'OK';
+        
+        if (item.stock <= 0) {
+            statusClass = 'badge-danger';
+            statusText = 'Out of Stock';
+        } else if (item.stock <= item.reorder) {
+            statusClass = 'badge-warning';
+            statusText = 'Low Stock';
+        }
+        
+        // Format stock display - show whole numbers for items counted in "each" or "slice", keep decimals for other units
+        let stockDisplay = item.stock;
+        if (item.unit === 'each' || item.unit === 'slice' || item.unit === 'head') {
+            stockDisplay = Math.round(item.stock);
+        } else {
+            stockDisplay = item.stock.toFixed(1);
+        }
+        
+        return `
+            <tr>
+                <td>${item.name}</td>
+                <td>${stockDisplay}</td>
+                <td>${item.unit}</td>
+                <td><span class="${statusClass}">${statusText}</span></td>
+                <td>
+                    <button class="btn btn-sm btn-primary" onclick="showReceiveStockModal(${item.id})" ${!hasPermission('inventory') ? 'disabled' : ''}>
+                        Receive
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+    
+    updateLowStockAlerts();
+}
+
+function populateInventoryDropdown() {
+    const select = document.getElementById('receive-item');
+    if (!select) return;
+    
+    if (!inventoryItems || inventoryItems.length === 0) {
+        select.innerHTML = '<option value="">No items available</option>';
+        return;
+    }
+    
+    let options = '<option value="">-- Select Item --</option>';
+    inventoryItems.forEach(item => {
+        // Format stock display for dropdown
+        let stockDisplay = item.stock;
+        if (item.unit === 'each' || item.unit === 'slice' || item.unit === 'head') {
+            stockDisplay = Math.round(item.stock);
+        } else {
+            stockDisplay = item.stock.toFixed(1);
+        }
+        
+        options += `<option value="${item.id}">${item.name} (Current: ${stockDisplay} ${item.unit})</option>`;
+    });
+    
+    select.innerHTML = options;
+}
+
+function showReceiveStockModal(itemId = null) {
+    if (!hasPermission('inventory')) {
+        showNotification('You don\'t have permission to receive stock', 'error');
+        return;
+    }
+    
+    populateInventoryDropdown();
+    
+    if (itemId) {
+        const select = document.getElementById('receive-item');
+        if (select) {
+            select.value = itemId;
+        }
+    }
+    
+    document.getElementById('receive-stock-modal').style.display = 'flex';
+}
+
+function closeReceiveStockModal() {
+    document.getElementById('receive-stock-modal').style.display = 'none';
+    document.getElementById('receive-quantity').value = '';
+}
+
+function receiveStock() {
+    if (!hasPermission('inventory')) return;
+    
+    const itemId = document.getElementById('receive-item').value;
+    const quantity = parseFloat(document.getElementById('receive-quantity').value);
+    
+    if (!itemId) {
+        showNotification('Please select an item', 'warning');
+        return;
+    }
+    
+    if (!quantity || quantity <= 0) {
+        showNotification('Please enter a valid quantity', 'warning');
+        return;
+    }
+    
+    const item = inventoryItems.find(i => i.id == itemId);
+    if (item) {
+        item.stock += quantity;
+        
+        if (item.stock <= 0) {
+            item.status = 'out';
+        } else if (item.stock <= item.reorder) {
+            item.status = 'low';
+        } else {
+            item.status = 'ok';
+        }
+        
+        renderInventory(inventoryItems);
+        populateInventoryDropdown();
+        localStorage.setItem('inventoryItems', JSON.stringify(inventoryItems));
+        
+        showNotification(`Received ${quantity} ${item.unit} of ${item.name}`, 'success');
+    }
+    
+    closeReceiveStockModal();
+}
+
+function updateInventoryFromOrder(order) {
+    if (!inventoryItems || inventoryItems.length === 0) return;
+    
+    const recipeIngredients = {
+        'Classic Burger': [
+            { name: 'Beef Patty', quantity: 1 },
+            { name: 'Burger Bun', quantity: 1 },
+            { name: 'Lettuce', quantity: 0.2 },
+            { name: 'Cheese', quantity: 1 }
+        ],
+        'Cheeseburger': [
+            { name: 'Beef Patty', quantity: 1 },
+            { name: 'Burger Bun', quantity: 1 },
+            { name: 'Lettuce', quantity: 0.2 },
+            { name: 'Cheese', quantity: 2 }
+        ],
+        'French Fries': [
+            { name: 'Frying Oil', quantity: 0.1 }
+        ],
+        'Chicken Wings': [
+            { name: 'Chicken Wings', quantity: 1 },
+            { name: 'Frying Oil', quantity: 0.2 }
+        ],
+        'Soda': [
+            { name: 'Soda Syrup', quantity: 0.1 }
+        ],
+        'Ice Cream': [],
+        'Caesar Salad': [
+            { name: 'Lettuce', quantity: 0.5 }
+        ],
+        'Steak': [
+            { name: 'Beef Patty', quantity: 2 }
+        ]
+    };
+    
+    let inventoryUpdated = false;
+    
+    // Count item quantities in the order
+    const itemCounts = new Map();
+    order.items.forEach(item => {
+        const count = itemCounts.get(item.name) || 0;
+        itemCounts.set(item.name, count + 1);
+    });
+    
+    itemCounts.forEach((count, itemName) => {
+        const ingredients = recipeIngredients[itemName];
+        if (!ingredients) return;
+        
+        ingredients.forEach(ingredient => {
+            const inventoryItem = inventoryItems.find(i => 
+                i.name.toLowerCase() === ingredient.name.toLowerCase()
+            );
+            
+            if (inventoryItem) {
+                const totalQuantity = ingredient.quantity * count;
+                inventoryItem.stock = Math.max(0, inventoryItem.stock - totalQuantity);
+                
+                if (inventoryItem.stock <= 0) {
+                    inventoryItem.status = 'out';
+                } else if (inventoryItem.stock <= inventoryItem.reorder) {
+                    inventoryItem.status = 'low';
+                } else {
+                    inventoryItem.status = 'ok';
+                }
+                
+                inventoryUpdated = true;
+            }
+        });
+    });
+    
+    if (inventoryUpdated) {
+        renderInventory(inventoryItems);
+        localStorage.setItem('inventoryItems', JSON.stringify(inventoryItems));
+        updateLowStockAlerts();
+        checkLowStockAfterOrder();
+    }
+}
+
+function checkLowStockAfterOrder() {
+    if (!inventoryItems) return;
+    
+    const lowStock = inventoryItems.filter(item => item.stock > 0 && item.stock <= item.reorder);
+    const outOfStock = inventoryItems.filter(item => item.stock <= 0);
+    
+    if (outOfStock.length > 0) {
+        const items = outOfStock.map(i => i.name).join(', ');
+        showNotification(`⚠️ OUT OF STOCK: ${items}`, 'error');
+    } else if (lowStock.length > 0) {
+        const items = lowStock.map(i => i.name).join(', ');
+        showNotification(`⚠️ Low stock: ${items}`, 'warning');
+    }
+}
+
+// =============================================
+// OVERVIEW DASHBOARD FUNCTIONS
+// =============================================
+
+function initializeSalesData() {
+    const saved = localStorage.getItem('dailySales');
+    if (!saved) {
+        const menuItems = [
+            { name: 'Classic Burger', price: 12.99 },
+            { name: 'Cheeseburger', price: 13.99 },
+            { name: 'French Fries', price: 4.99 },
+            { name: 'Chicken Wings', price: 10.99 },
+            { name: 'Soda', price: 1.99 },
+            { name: 'Ice Cream', price: 3.99 },
+            { name: 'Caesar Salad', price: 8.99 },
+            { name: 'Steak', price: 24.99 }
+        ];
+        
+        const defaultSales = [];
+        
+        for (let i = 0; i < 20; i++) {
+            const numItems = Math.floor(Math.random() * 3) + 1;
+            const items = [];
+            let total = 0;
+            
+            for (let j = 0; j < numItems; j++) {
+                const randomIndex = Math.floor(Math.random() * menuItems.length);
+                const randomItem = { 
+                    name: menuItems[randomIndex].name, 
+                    price: menuItems[randomIndex].price 
+                };
+                items.push(randomItem);
+                total += randomItem.price;
+            }
+            
+            defaultSales.push({
+                id: Date.now() - i * 1000,
+                items: items,
+                total: total,
+                timestamp: new Date(Date.now() - i * 3600000).toLocaleString(),
+                date: new Date().toLocaleDateString()
+            });
+        }
+        
+        localStorage.setItem('dailySales', JSON.stringify(defaultSales));
+    }
+}
+
+function updateTopItems() {
+    const tbody = document.getElementById('top-items-body');
+    if (!tbody) return;
+    
+    tbody.innerHTML = '';
+    
+    let salesData = [];
+    try {
+        const saved = localStorage.getItem('dailySales');
+        if (saved) {
+            salesData = JSON.parse(saved);
+        }
+    } catch (e) {
+        console.error('Error loading sales data:', e);
+    }
+    
+    // If no sales data, use default mock data with integer quantities
+    if (!salesData || salesData.length === 0) {
+        const defaultItems = [
+            { name: 'Classic Burger', quantity: 18, revenue: 233.82 },
+            { name: 'Steak', quantity: 8, revenue: 199.92 },
+            { name: 'Chicken Wings', quantity: 12, revenue: 131.88 },
+            { name: 'French Fries', quantity: 15, revenue: 74.85 },
+            { name: 'Soda', quantity: 20, revenue: 39.80 }
+        ];
+        
+        tbody.innerHTML = defaultItems.map((item, index) => `
+            <tr>
+                <td>
+                    ${index === 0 ? '🥇 ' : index === 1 ? '🥈 ' : index === 2 ? '🥉 ' : ''}
+                    <strong>${item.name}</strong>
+                </td>
+                <td>${item.quantity}</td>
+                <td>$${item.revenue.toFixed(2)}</td>
+            </tr>
+        `).join('');
+        return;
+    }
+    
+    // Calculate top items from sales data with proper integer quantities
+    const itemSales = new Map();
+    
+    salesData.forEach(sale => {
+        if (sale.items && Array.isArray(sale.items)) {
+            sale.items.forEach(item => {
+                const itemName = item.name;
+                const itemPrice = item.price || 0;
+                
+                if (itemSales.has(itemName)) {
+                    const existing = itemSales.get(itemName);
+                    existing.quantity += 1; // Increment by 1 for each occurrence
+                    existing.revenue += itemPrice;
+                } else {
+                    itemSales.set(itemName, {
+                        name: itemName,
+                        quantity: 1,
+                        revenue: itemPrice
+                    });
+                }
+            });
+        }
+    });
+    
+    // Convert to array and sort by revenue in DESCENDING order
+    const topItems = Array.from(itemSales.values())
+        .sort((a, b) => b.revenue - a.revenue) // b.revenue - a.revenue = descending (highest first)
+        .slice(0, 5); // Get top 5
+    
+    if (topItems.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3" class="loading">No sales data yet</td></tr>';
+        return;
+    }
+    
+    // Ensure quantities are integers (whole numbers)
+    topItems.forEach(item => {
+        item.quantity = Math.round(item.quantity);
+    });
+    
+    tbody.innerHTML = topItems.map((item, index) => `
+        <tr>
+            <td>
+                ${index === 0 ? '🥇 ' : index === 1 ? '🥈 ' : index === 2 ? '🥉 ' : ''}
+                <strong>${item.name}</strong>
+            </td>
+            <td>${item.quantity}</td>
+            <td>$${item.revenue.toFixed(2)}</td>
+        </tr>
+    `).join('');
+}
+
+function updateLowStockAlerts() {
+    const alertsDiv = document.getElementById('low-stock-alerts');
+    if (!alertsDiv) return;
+    
+    alertsDiv.innerHTML = '';
+    
+    if (!inventoryItems || inventoryItems.length === 0) {
+        loadInventory();
+        if (!inventoryItems || inventoryItems.length === 0) {
+            alertsDiv.innerHTML = '<div class="alert alert-info">No inventory data available</div>';
+            return;
+        }
+    }
+    
+    const lowStock = inventoryItems.filter(item => 
+        item.stock > 0 && item.stock <= item.reorder
+    );
+    
+    const outOfStock = inventoryItems.filter(item => 
+        item.stock <= 0
+    );
+    
+    if (lowStock.length === 0 && outOfStock.length === 0) {
+        alertsDiv.innerHTML = '<div class="alert alert-success">✅ All stock levels are good</div>';
+        return;
+    }
+    
+    outOfStock.forEach(item => {
+        // Format stock for display
+        let stockDisplay = item.stock;
+        if (item.unit === 'each' || item.unit === 'slice' || item.unit === 'head') {
+            stockDisplay = Math.round(item.stock);
+        } else {
+            stockDisplay = item.stock.toFixed(1);
+        }
+        
+        const alertItem = document.createElement('div');
+        alertItem.className = 'alert alert-danger';
+        alertItem.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <i class="fas fa-times-circle"></i>
+                <div style="flex: 1;">
+                    <strong>${item.name}</strong> - OUT OF STOCK!
+                </div>
+                <button class="btn btn-sm btn-primary" onclick="showReceiveStockModal(${item.id})">
+                    <i class="fas fa-plus"></i> Order
+                </button>
+            </div>
+        `;
+        alertsDiv.appendChild(alertItem);
+    });
+    
+    lowStock.forEach(item => {
+        // Format stock for display
+        let stockDisplay = item.stock;
+        if (item.unit === 'each' || item.unit === 'slice' || item.unit === 'head') {
+            stockDisplay = Math.round(item.stock);
+        } else {
+            stockDisplay = item.stock.toFixed(1);
+        }
+        
+        const alertItem = document.createElement('div');
+        alertItem.className = 'alert alert-warning';
+        alertItem.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <i class="fas fa-exclamation-triangle"></i>
+                <div style="flex: 1;">
+                    <strong>${item.name}</strong> - Low stock: ${stockDisplay} ${item.unit} remaining<br>
+                    <small>Reorder at: ${item.reorder}</small>
+                </div>
+                <button class="btn btn-sm btn-primary" onclick="showReceiveStockModal(${item.id})">
+                    <i class="fas fa-plus"></i> Order
+                </button>
+            </div>
+        `;
+        alertsDiv.appendChild(alertItem);
+    });
+}
+
+function saveOrderToSalesHistory(order) {
+    try {
+        let salesData = [];
+        const saved = localStorage.getItem('dailySales');
+        if (saved) {
+            salesData = JSON.parse(saved);
+        }
+        
+        // Save items as they are - each occurrence will be counted separately
+        // This ensures proper quantity counting in updateTopItems
+        const orderItems = order.items.map(item => ({
+            name: item.name,
+            price: item.price
+        }));
+        
+        salesData.push({
+            id: order.id,
+            items: orderItems,
+            total: order.total,
+            timestamp: order.timestamp || new Date().toLocaleString(),
+            date: new Date().toLocaleDateString()
+        });
+        
+        if (salesData.length > 100) {
+            salesData = salesData.slice(-100);
+        }
+        
+        localStorage.setItem('dailySales', JSON.stringify(salesData));
+        updateTopItems();
+    } catch (e) {
+        console.error('Error saving order:', e);
+    }
+}
+
+// =============================================
 // PAYMENT PROCESSING FUNCTIONS
 // =============================================
 
@@ -466,41 +958,52 @@ function processPayment() {
         return;
     }
     
-    // Reset payment state
     tipAmount = 0;
     currentPaymentMethod = 'cash';
     
-    // Update payment modal with cart items
     updatePaymentModal();
-    
-    // Show payment modal
     document.getElementById('payment-modal').style.display = 'flex';
 }
 
 function updatePaymentModal() {
-    // Calculate totals
     const subtotal = cart.reduce((sum, item) => sum + item.price, 0);
     const tax = subtotal * 0.085;
     const total = subtotal + tax;
     
-    // Update payment summary
     document.getElementById('payment-subtotal').textContent = `$${subtotal.toFixed(2)}`;
     document.getElementById('payment-tax').textContent = `$${tax.toFixed(2)}`;
     document.getElementById('payment-total').textContent = `$${total.toFixed(2)}`;
     
-    // Populate items list
     const itemsDiv = document.getElementById('payment-items');
-    itemsDiv.innerHTML = cart.map(item => `
-        <div class="payment-item">
-            <span>${item.name}</span>
-            <span>$${item.price.toFixed(2)}</span>
-        </div>
-    `).join('');
+    if (itemsDiv) {
+        // Group items for display
+        const itemMap = new Map();
+        cart.forEach(item => {
+            const key = item.name;
+            if (itemMap.has(key)) {
+                const existing = itemMap.get(key);
+                existing.quantity += 1;
+                existing.total += item.price;
+            } else {
+                itemMap.set(key, {
+                    name: item.name,
+                    price: item.price,
+                    quantity: 1,
+                    total: item.price
+                });
+            }
+        });
+        
+        itemsDiv.innerHTML = Array.from(itemMap.values()).map(item => `
+            <div class="payment-item">
+                <span>${item.name} ${item.quantity > 1 ? `(x${item.quantity})` : ''}</span>
+                <span>$${item.total.toFixed(2)}</span>
+            </div>
+        `).join('');
+    }
     
-    // Reset payment method to cash
     selectPaymentMethod('cash');
     
-    // Clear fields
     document.getElementById('amount-tendered').value = '';
     document.getElementById('change-amount').value = '0.00';
     document.getElementById('card-number').value = '';
@@ -515,13 +1018,11 @@ function updatePaymentModal() {
 function selectPaymentMethod(method) {
     currentPaymentMethod = method;
     
-    // Update active button
     document.querySelectorAll('.payment-method-btn').forEach(btn => {
         btn.classList.remove('active');
     });
     document.getElementById(`method-${method}`).classList.add('active');
     
-    // Show relevant fields
     document.getElementById('cash-payment-fields').style.display = method === 'cash' ? 'block' : 'none';
     document.getElementById('card-payment-fields').style.display = method === 'card' ? 'block' : 'none';
     document.getElementById('gift-payment-fields').style.display = method === 'gift' ? 'block' : 'none';
@@ -537,7 +1038,6 @@ function calculateChange() {
 
 function addTip(percentage) {
     const totalElement = document.getElementById('payment-total');
-    const currentTotal = parseFloat(totalElement.textContent.replace('$', ''));
     const subtotal = parseFloat(document.getElementById('payment-subtotal').textContent.replace('$', ''));
     const tax = parseFloat(document.getElementById('payment-tax').textContent.replace('$', ''));
     
@@ -621,7 +1121,6 @@ function completePayment() {
     const tax = parseFloat(document.getElementById('payment-tax').textContent.replace('$', ''));
     const total = parseFloat(document.getElementById('payment-total').textContent.replace('$', ''));
     
-    // Create order object
     const order = {
         id: Date.now(),
         table: table,
@@ -631,11 +1130,10 @@ function completePayment() {
         total: total,
         tip: tipAmount,
         paymentMethod: currentPaymentMethod,
-        staff: currentUser.name,
+        staff: currentUser ? currentUser.name : 'Unknown',
         timestamp: new Date().toLocaleString()
     };
     
-    // Process payment based on method
     if (currentPaymentMethod === 'cash') {
         const tendered = parseFloat(document.getElementById('amount-tendered').value);
         const change = tendered - total;
@@ -649,17 +1147,25 @@ function completePayment() {
         showNotification('Gift card payment approved', 'success');
     }
     
-    // Print receipt
-    printReceipt(order);
+    // Close payment modal IMMEDIATELY
+    closePaymentModal();
+    
+    // Update inventory
+    updateInventoryFromOrder(order);
+    
+    // Save to sales history
+    saveOrderToSalesHistory(order);
+    
+    // Print receipt - open in new window without blocking
+    setTimeout(() => {
+        printReceipt(order);
+    }, 200);
     
     // Add to kitchen display
     addOrderToKitchen(order);
     
-    // Update sales data
+    // Update sales data display
     updateSalesData(order);
-    
-    // Close payment modal
-    closePaymentModal();
     
     // Clear cart
     clearCart();
@@ -669,26 +1175,48 @@ function completePayment() {
 }
 
 function closePaymentModal() {
-    document.getElementById('payment-modal').style.display = 'none';
+    const modal = document.getElementById('payment-modal');
+    if (modal) {
+        modal.style.display = 'none';
+        modal.classList.remove('show');
+        
+        // Ensure body scrolling is re-enabled
+        document.body.style.overflow = 'auto';
+        document.body.style.position = 'relative';
+    }
+    
+    // Clear any modal backdrops that might exist
+    const backdrops = document.querySelectorAll('.modal-backdrop');
+    backdrops.forEach(backdrop => backdrop.remove());
 }
 
 function updateSalesData(order) {
-    // Update today's sales
     const todaySalesElement = document.getElementById('today-sales');
-    const currentSales = parseFloat(todaySalesElement.textContent.replace('$', '').replace(',', ''));
-    const newSales = currentSales + order.total;
-    todaySalesElement.textContent = `$${newSales.toFixed(2)}`;
+    if (todaySalesElement) {
+        const currentSales = parseFloat(todaySalesElement.textContent.replace('$', '').replace(',', '')) || 0;
+        const newSales = currentSales + order.total;
+        todaySalesElement.textContent = `$${newSales.toFixed(2)}`;
+    }
     
-    // Update orders count
     const ordersElement = document.getElementById('today-orders');
-    const currentOrders = parseInt(ordersElement.textContent);
-    ordersElement.textContent = currentOrders + 1;
+    if (ordersElement) {
+        const currentOrders = parseInt(ordersElement.textContent) || 0;
+        ordersElement.textContent = currentOrders + 1;
+    }
     
-    // Update average order
     const avgElement = document.getElementById('avg-order');
-    const currentAvg = parseFloat(avgElement.textContent.replace('$', ''));
-    const newAvg = ((currentAvg * currentOrders) + order.total) / (currentOrders + 1);
-    avgElement.textContent = `$${newAvg.toFixed(2)}`;
+    if (avgElement) {
+        const currentAvg = parseFloat(avgElement.textContent.replace('$', '')) || 0;
+        const currentOrders = parseInt(document.getElementById('today-orders').textContent) || 1;
+        const newAvg = ((currentAvg * (currentOrders - 1)) + order.total) / currentOrders;
+        avgElement.textContent = `$${newAvg.toFixed(2)}`;
+    }
+    
+    const activeTablesEl = document.getElementById('active-tables');
+    if (activeTablesEl && order.table !== 'takeout') {
+        const currentActive = parseInt(activeTablesEl.textContent.split('/')[0]) || 0;
+        activeTablesEl.textContent = `${currentActive + 1}/8`;
+    }
 }
 
 // =============================================
@@ -696,7 +1224,6 @@ function updateSalesData(order) {
 // =============================================
 
 function printReceipt(order) {
-    // Format table number for display
     let tableDisplay = order.table;
     if (order.table === 'takeout') {
         tableDisplay = 'TAKEOUT';
@@ -706,7 +1233,22 @@ function printReceipt(order) {
         tableDisplay = `TABLE ${order.table}`;
     }
     
-    // Create receipt content
+    // Group items for receipt display
+    const itemMap = new Map();
+    order.items.forEach(item => {
+        const key = item.name;
+        if (itemMap.has(key)) {
+            const existing = itemMap.get(key);
+            existing.quantity += 1;
+        } else {
+            itemMap.set(key, {
+                name: item.name,
+                price: item.price,
+                quantity: 1
+            });
+        }
+    });
+    
     const receiptContent = `
         <div style="font-family: 'Courier New', monospace; max-width: 300px; margin: 0 auto; padding: 20px;">
             <div style="text-align: center; margin-bottom: 20px;">
@@ -735,11 +1277,11 @@ function printReceipt(order) {
                         </tr>
                     </thead>
                     <tbody>
-                        ${order.items.map(item => `
+                        ${Array.from(itemMap.values()).map(item => `
                             <tr>
                                 <td style="text-align: left;">${item.name}</td>
-                                <td style="text-align: center;">1</td>
-                                <td style="text-align: right;">$${item.price.toFixed(2)}</td>
+                                <td style="text-align: center;">${item.quantity}</td>
+                                <td style="text-align: right;">$${(item.price * item.quantity).toFixed(2)}</td>
                             </tr>
                         `).join('')}
                     </tbody>
@@ -789,35 +1331,41 @@ function printReceipt(order) {
         </div>
     `;
     
-    // Open print window
-    const printWindow = window.open('', '_blank', 'width=400,height=600');
-    printWindow.document.write(`
-        <html>
-            <head>
-                <title>Receipt - Order #${order.id}</title>
-                <style>
-                    body { margin: 0; padding: 20px; }
-                    @media print {
-                        body { margin: 0; padding: 0; }
-                    }
-                </style>
-            </head>
-            <body>
-                ${receiptContent}
-                <script>
-                    window.onload = function() {
-                        window.print();
-                        setTimeout(function() { window.close(); }, 500);
-                    };
-                </script>
-            </body>
-        </html>
-    `);
-    printWindow.document.close();
+    // Open print window in a non-blocking way
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+        printWindow.document.write(`
+            <html>
+                <head>
+                    <title>Receipt - Order #${order.id}</title>
+                    <style>
+                        body { margin: 0; padding: 20px; font-family: 'Courier New', monospace; }
+                        @media print {
+                            body { margin: 0; padding: 0; }
+                        }
+                    </style>
+                </head>
+                <body>
+                    ${receiptContent}
+                    <script>
+                        window.onload = function() {
+                            setTimeout(function() {
+                                window.print();
+                                setTimeout(function() { window.close(); }, 500);
+                            }, 100);
+                        };
+                    <\/script>
+                </body>
+            </html>
+        `);
+        printWindow.document.close();
+    } else {
+        // If popup is blocked, show a notification
+        showNotification('Please allow popups to print receipt', 'warning');
+    }
 }
 
 function printKitchenTicket(order) {
-    // Format table number for display
     let tableDisplay = order.table;
     if (order.table === 'takeout') {
         tableDisplay = 'TAKEOUT';
@@ -827,7 +1375,21 @@ function printKitchenTicket(order) {
         tableDisplay = `TABLE ${order.table}`;
     }
     
-    // Create kitchen ticket content
+    // Group items for kitchen ticket
+    const itemMap = new Map();
+    order.items.forEach(item => {
+        const key = item.name;
+        if (itemMap.has(key)) {
+            const existing = itemMap.get(key);
+            existing.quantity += 1;
+        } else {
+            itemMap.set(key, {
+                name: item.name,
+                quantity: 1
+            });
+        }
+    });
+    
     const ticketContent = `
         <div style="font-family: 'Courier New', monospace; max-width: 300px; margin: 0 auto; padding: 20px;">
             <div style="text-align: center; margin-bottom: 20px;">
@@ -846,7 +1408,7 @@ function printKitchenTicket(order) {
             
             <div style="margin-bottom: 15px;">
                 <h3 style="margin: 0 0 10px 0;">ITEMS TO PREPARE:</h3>
-                ${order.items.map(item => `
+                ${Array.from(itemMap.values()).map(item => `
                     <div style="font-size: 16px; margin-bottom: 5px;">
                         <strong>${item.quantity}x ${item.name}</strong>
                     </div>
@@ -861,7 +1423,6 @@ function printKitchenTicket(order) {
         </div>
     `;
     
-    // Open print window for kitchen
     const printWindow = window.open('', '_blank', 'width=400,height=500');
     printWindow.document.write(`
         <html>
@@ -881,93 +1442,7 @@ function printKitchenTicket(order) {
                         window.print();
                         setTimeout(function() { window.close(); }, 500);
                     };
-                </script>
-            </body>
-        </html>
-    `);
-    printWindow.document.close();
-}
-
-function printDailyReport(reportData, period) {
-    // Create report content
-    const reportContent = `
-        <div style="font-family: 'Courier New', monospace; max-width: 400px; margin: 0 auto; padding: 20px;">
-            <div style="text-align: center; margin-bottom: 20px;">
-                <h2 style="margin: 0; font-size: 24px;">📊 SALES REPORT</h2>
-                <p style="margin: 5px 0;">${period.toUpperCase()}</p>
-                <p>${new Date().toLocaleDateString()}</p>
-                <div style="border-top: 2px solid #000; margin: 10px 0;"></div>
-            </div>
-            
-            <div style="margin-bottom: 20px;">
-                <h3>SUMMARY</h3>
-                <div style="display: flex; justify-content: space-between;">
-                    <span>Total Sales:</span>
-                    <span>$${reportData.summary.total_sales.toFixed(2)}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between;">
-                    <span>Total Orders:</span>
-                    <span>${reportData.summary.total_orders}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between;">
-                    <span>Average Order:</span>
-                    <span>$${reportData.summary.avg_order_value.toFixed(2)}</span>
-                </div>
-            </div>
-            
-            <div style="border-top: 1px dashed #000; margin: 10px 0;"></div>
-            
-            <div style="margin-bottom: 20px;">
-                <h3>TOP ITEMS</h3>
-                <table style="width: 100%;">
-                    <thead>
-                        <tr>
-                            <th style="text-align: left;">Item</th>
-                            <th style="text-align: center;">Qty</th>
-                            <th style="text-align: right;">Revenue</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${reportData.top_items.map(item => `
-                            <tr>
-                                <td>${item.name}</td>
-                                <td style="text-align: center;">${item.quantity_sold}</td>
-                                <td style="text-align: right;">$${item.revenue.toFixed(2)}</td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
-            
-            <div style="border-top: 2px solid #000; margin: 10px 0;"></div>
-            
-            <div style="text-align: center;">
-                <p>End of Report</p>
-            </div>
-        </div>
-    `;
-    
-    // Open print window for report
-    const printWindow = window.open('', '_blank', 'width=500,height=700');
-    printWindow.document.write(`
-        <html>
-            <head>
-                <title>Sales Report - ${period}</title>
-                <style>
-                    body { margin: 0; padding: 20px; font-family: Arial, sans-serif; }
-                    @media print {
-                        body { margin: 0; padding: 0; }
-                    }
-                </style>
-            </head>
-            <body>
-                ${reportContent}
-                <script>
-                    window.onload = function() {
-                        window.print();
-                        setTimeout(function() { window.close(); }, 500);
-                    };
-                </script>
+                <\/script>
             </body>
         </html>
     `);
@@ -1042,9 +1517,17 @@ function renderKitchenOrders() {
         return;
     }
     
+    const sortedOrders = [...kitchenOrders].sort((a, b) => {
+        const statusOrder = { 'new': 0, 'preparing': 1, 'ready': 2, 'served': 3 };
+        if (statusOrder[a.status] !== statusOrder[b.status]) {
+            return statusOrder[a.status] - statusOrder[b.status];
+        }
+        return new Date(`1970/01/01 ${b.time}`) - new Date(`1970/01/01 ${a.time}`);
+    });
+    
     updateKitchenBadges();
     
-    container.innerHTML = kitchenOrders.map(order => `
+    container.innerHTML = sortedOrders.map(order => `
         <div class="kitchen-order-card ${order.status}">
             <div class="kitchen-order-header">
                 <span class="kitchen-order-table">${order.table_number}</span>
@@ -1086,7 +1569,6 @@ function updateKitchenBadges() {
 }
 
 function updateOrderStatus(orderId, newStatus) {
-    // Find the order
     const orderIndex = kitchenOrders.findIndex(o => o.id === orderId);
     
     if (orderIndex === -1) {
@@ -1094,40 +1576,33 @@ function updateOrderStatus(orderId, newStatus) {
         return;
     }
     
-    // Get the order
     const order = kitchenOrders[orderIndex];
     
-    // Define status messages
     const statusMessages = {
         'preparing': 'started preparing',
         'ready': 'is ready for serving',
         'served': 'has been served'
     };
     
-    // Update the status
     order.status = newStatus;
     
-    // If status is 'served', remove from kitchen display
     if (newStatus === 'served') {
-        // Remove from kitchen orders
-        kitchenOrders.splice(orderIndex, 1);
-        
-        // Show notification
         showNotification(`Order from ${order.table_number} has been served`, 'success');
+        
+        setTimeout(() => {
+            kitchenOrders.splice(orderIndex, 1);
+            renderKitchenOrders();
+            saveKitchenOrders();
+        }, 2000);
     } else {
-        // Show status change notification
         showNotification(`Order from ${order.table_number} ${statusMessages[newStatus] || 'updated'}`, 'success');
     }
     
-    // Re-render the kitchen display
     renderKitchenOrders();
-    
-    // Save to localStorage for persistence
     saveKitchenOrders();
 }
 
 function addOrderToKitchen(order) {
-    // Format table number
     let tableDisplay = order.table;
     if (order.table === 'takeout') {
         tableDisplay = 'Takeout';
@@ -1137,23 +1612,33 @@ function addOrderToKitchen(order) {
         tableDisplay = `Table ${order.table}`;
     }
     
+    const itemMap = new Map();
+    order.items.forEach(item => {
+        if (itemMap.has(item.name)) {
+            itemMap.set(item.name, itemMap.get(item.name) + 1);
+        } else {
+            itemMap.set(item.name, 1);
+        }
+    });
+    
+    const groupedItems = Array.from(itemMap.entries()).map(([name, quantity]) => ({
+        name: name,
+        quantity: quantity
+    }));
+    
     const newOrder = {
         id: order.id,
         table_number: tableDisplay,
         time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
         status: 'new',
         created_by: currentUser ? currentUser.name : 'Unknown',
-        items: order.items.map(item => ({
-            name: item.name,
-            quantity: 1
-        }))
+        items: groupedItems
     };
     
-    kitchenOrders.unshift(newOrder); // Add to beginning
+    kitchenOrders.unshift(newOrder);
     renderKitchenOrders();
     saveKitchenOrders();
     
-    // Print kitchen ticket
     printKitchenTicket(order);
     
     showNotification(`New order added to kitchen (${tableDisplay})`, 'success');
@@ -1167,181 +1652,12 @@ function clearCompletedOrders() {
     
     const beforeCount = kitchenOrders.length;
     kitchenOrders = kitchenOrders.filter(o => o.status !== 'served');
-    const afterCount = kitchenOrders.length;
-    const removedCount = beforeCount - afterCount;
+    const removedCount = beforeCount - kitchenOrders.length;
     
     renderKitchenOrders();
     saveKitchenOrders();
     
-    if (removedCount > 0) {
-        showNotification(`Cleared ${removedCount} completed orders`, 'success');
-    } else {
-        showNotification('No completed orders to clear', 'info');
-    }
-}
-
-function resetKitchenOrders() {
-    if (!hasPermission('staff')) {
-        showNotification('Only managers can reset kitchen orders', 'error');
-        return;
-    }
-    
-    kitchenOrders = getDefaultKitchenOrders();
-    renderKitchenOrders();
-    saveKitchenOrders();
-    
-    showNotification('Kitchen orders reset to default', 'success');
-}
-
-// =============================================
-// INVENTORY FUNCTIONS
-// =============================================
-
-function loadInventory() {
-    // Mock inventory data - store globally
-    inventoryItems = [
-        { id: 1, name: 'Beef Patty', stock: 45, unit: 'each', reorder: 20, status: 'ok' },
-        { id: 2, name: 'Burger Bun', stock: 32, unit: 'each', reorder: 30, status: 'low' },
-        { id: 3, name: 'Lettuce', stock: 8, unit: 'head', reorder: 10, status: 'low' },
-        { id: 4, name: 'Chicken Wings', stock: 0, unit: 'lbs', reorder: 15, status: 'out' },
-        { id: 5, name: 'Frying Oil', stock: 5, unit: 'gallon', reorder: 2, status: 'ok' },
-        { id: 6, name: 'Soda Syrup', stock: 3, unit: 'gallon', reorder: 4, status: 'low' },
-        { id: 7, name: 'Cheese', stock: 50, unit: 'slice', reorder: 20, status: 'ok' },
-        { id: 8, name: 'Bacon', stock: 15, unit: 'lbs', reorder: 10, status: 'ok' }
-    ];
-    
-    renderInventory(inventoryItems);
-    populateInventoryDropdown();
-}
-
-function renderInventory(items) {
-    const tbody = document.getElementById('inventory-body');
-    if (!tbody) return;
-    
-    if (!items || items.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="loading">No items</td></tr>';
-        return;
-    }
-    
-    const lowStock = items.filter(i => i.status === 'low' || i.stock <= i.reorder).length;
-    const outOfStock = items.filter(i => i.stock <= 0).length;
-    const totalValue = items.reduce((sum, item) => sum + (item.stock * (item.cost || 2.50)), 0);
-    
-    document.getElementById('low-stock-count').textContent = lowStock;
-    document.getElementById('inventory-badge').textContent = lowStock + outOfStock;
-    document.getElementById('total-inventory-value').textContent = `$${totalValue.toFixed(2)}`;
-    
-    tbody.innerHTML = items.map(item => {
-        let statusClass = 'badge-success';
-        let statusText = 'OK';
-        
-        if (item.stock <= 0) {
-            statusClass = 'badge-danger';
-            statusText = 'Out of Stock';
-        } else if (item.stock <= item.reorder) {
-            statusClass = 'badge-warning';
-            statusText = 'Low Stock';
-        }
-        
-        return `
-            <tr>
-                <td>${item.name}</td>
-                <td>${item.stock}</td>
-                <td>${item.unit}</td>
-                <td><span class="badge ${statusClass}">${statusText}</span></td>
-                <td>
-                    <button class="btn btn-secondary btn-small" onclick="showReceiveStockModal(${item.id})" ${!hasPermission('inventory') ? 'disabled' : ''}>
-                        Receive
-                    </button>
-                </td>
-            </tr>
-        `;
-    }).join('');
-}
-
-function populateInventoryDropdown() {
-    const select = document.getElementById('receive-item');
-    if (!select) return;
-    
-    if (!inventoryItems || inventoryItems.length === 0) {
-        select.innerHTML = '<option value="">No items available</option>';
-        return;
-    }
-    
-    let options = '<option value="">-- Select Item --</option>';
-    inventoryItems.forEach(item => {
-        options += `<option value="${item.id}">${item.name} (Current: ${item.stock} ${item.unit})</option>`;
-    });
-    
-    select.innerHTML = options;
-}
-
-function showReceiveStockModal(itemId = null) {
-    if (!hasPermission('inventory')) {
-        showNotification('You don\'t have permission to receive stock', 'error');
-        return;
-    }
-    
-    // Refresh dropdown
-    populateInventoryDropdown();
-    
-    // If specific item ID is provided, select it
-    if (itemId) {
-        const select = document.getElementById('receive-item');
-        if (select) {
-            select.value = itemId;
-        }
-    }
-    
-    document.getElementById('receive-stock-modal').style.display = 'flex';
-}
-
-function closeReceiveStockModal() {
-    document.getElementById('receive-stock-modal').style.display = 'none';
-    // Clear form
-    document.getElementById('receive-quantity').value = '';
-}
-
-function receiveStock() {
-    if (!hasPermission('inventory')) return;
-    
-    const itemId = document.getElementById('receive-item').value;
-    const quantity = parseFloat(document.getElementById('receive-quantity').value);
-    
-    if (!itemId) {
-        showNotification('Please select an item', 'warning');
-        return;
-    }
-    
-    if (!quantity || quantity <= 0) {
-        showNotification('Please enter a valid quantity', 'warning');
-        return;
-    }
-    
-    // Find the item
-    const item = inventoryItems.find(i => i.id == itemId);
-    if (item) {
-        // Update stock
-        item.stock += quantity;
-        
-        // Update status
-        if (item.stock <= 0) {
-            item.status = 'out';
-        } else if (item.stock <= item.reorder) {
-            item.status = 'low';
-        } else {
-            item.status = 'ok';
-        }
-        
-        // Re-render inventory
-        renderInventory(inventoryItems);
-        populateInventoryDropdown();
-        
-        // Show success message
-        showNotification(`Received ${quantity} ${item.unit} of ${item.name}`, 'success');
-    }
-    
-    closeReceiveStockModal();
+    showNotification(removedCount > 0 ? `Cleared ${removedCount} completed orders` : 'No completed orders to clear', 'success');
 }
 
 // =============================================
@@ -1352,14 +1668,11 @@ function loadReports() {
     if (!hasPermission('reports')) return;
     
     const period = document.getElementById('report-period')?.value || 'today';
-    
-    // Mock report data
     const data = getMockReportData(period);
     renderReports(data);
 }
 
 function getMockReportData(period) {
-    // Different data based on period
     if (period === 'today') {
         return {
             summary: { total_sales: 2450.75, total_orders: 42, avg_order_value: 58.35 },
@@ -1372,10 +1685,10 @@ function getMockReportData(period) {
             ],
             top_items: [
                 { name: 'Classic Burger', quantity_sold: 18, revenue: 233.82 },
-                { name: 'French Fries', quantity_sold: 15, revenue: 74.85 },
+                { name: 'Steak', quantity_sold: 8, revenue: 199.92 },
                 { name: 'Chicken Wings', quantity_sold: 12, revenue: 131.88 },
-                { name: 'Soda', quantity_sold: 20, revenue: 39.80 },
-                { name: 'Steak', quantity_sold: 8, revenue: 199.92 }
+                { name: 'French Fries', quantity_sold: 15, revenue: 74.85 },
+                { name: 'Soda', quantity_sold: 20, revenue: 39.80 }
             ]
         };
     } else if (period === 'week') {
@@ -1390,10 +1703,10 @@ function getMockReportData(period) {
             ],
             top_items: [
                 { name: 'Classic Burger', quantity_sold: 125, revenue: 1623.75 },
-                { name: 'French Fries', quantity_sold: 110, revenue: 548.90 },
+                { name: 'Steak', quantity_sold: 65, revenue: 1624.35 },
                 { name: 'Chicken Wings', quantity_sold: 95, revenue: 1044.05 },
-                { name: 'Soda', quantity_sold: 180, revenue: 358.20 },
-                { name: 'Steak', quantity_sold: 65, revenue: 1624.35 }
+                { name: 'French Fries', quantity_sold: 110, revenue: 548.90 },
+                { name: 'Soda', quantity_sold: 180, revenue: 358.20 }
             ]
         };
     } else {
@@ -1407,11 +1720,11 @@ function getMockReportData(period) {
                 { category: 'Desserts', revenue: 3499.00 }
             ],
             top_items: [
+                { name: 'Steak', quantity_sold: 280, revenue: 6997.20 },
                 { name: 'Classic Burger', quantity_sold: 520, revenue: 6754.80 },
-                { name: 'French Fries', quantity_sold: 485, revenue: 2420.15 },
                 { name: 'Chicken Wings', quantity_sold: 410, revenue: 4505.90 },
-                { name: 'Soda', quantity_sold: 750, revenue: 1492.50 },
-                { name: 'Steak', quantity_sold: 280, revenue: 6997.20 }
+                { name: 'French Fries', quantity_sold: 485, revenue: 2420.15 },
+                { name: 'Soda', quantity_sold: 750, revenue: 1492.50 }
             ]
         };
     }
@@ -1421,68 +1734,75 @@ function renderReports(data) {
     const reportDiv = document.getElementById('report-data');
     if (!reportDiv) return;
     
-    // Calculate percentages for category table
     const totalRevenue = data.summary.total_sales;
     
     let html = `
-        <div class="card">
-            <div class="card-header"><h3>Summary</h3></div>
-            <div class="card-body">
-                <p><strong>Total Sales:</strong> <span style="color: #27ae60; font-weight: bold;">$${data.summary.total_sales.toFixed(2)}</span></p>
-                <p><strong>Total Orders:</strong> <span style="font-weight: bold;">${data.summary.total_orders}</span></p>
-                <p><strong>Average Order:</strong> <span style="font-weight: bold;">$${data.summary.avg_order_value.toFixed(2)}</span></p>
+        <div class="report-card">
+            <h3>Summary</h3>
+            <div class="report-stats">
+                <div class="stat">
+                    <span class="stat-label">Total Sales:</span>
+                    <span class="stat-value">$${data.summary.total_sales.toFixed(2)}</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Total Orders:</span>
+                    <span class="stat-value">${data.summary.total_orders}</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Average Order:</span>
+                    <span class="stat-value">$${data.summary.avg_order_value.toFixed(2)}</span>
+                </div>
             </div>
         </div>
         
-        <div class="card">
-            <div class="card-header"><h3>Sales by Category</h3></div>
-            <div class="card-body">
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>Category</th>
-                            <th>Revenue</th>
-                            <th>%</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${data.by_category.map(cat => {
-                            const percentage = ((cat.revenue / totalRevenue) * 100).toFixed(1);
-                            return `
-                                <tr>
-                                    <td>${cat.category}</td>
-                                    <td>$${cat.revenue.toFixed(2)}</td>
-                                    <td>${percentage}%</td>
-                                </tr>
-                            `;
-                        }).join('')}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-        
-        <div class="card">
-            <div class="card-header"><h3>Top Items</h3></div>
-            <div class="card-body">
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>Item</th>
-                            <th>Qty</th>
-                            <th>Revenue</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${data.top_items.map(item => `
+        <div class="report-card">
+            <h3>Sales by Category</h3>
+            <table class="report-table">
+                <thead>
+                    <tr>
+                        <th>Category</th>
+                        <th>Revenue</th>
+                        <th>%</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${data.by_category.map(cat => {
+                        const percentage = ((cat.revenue / totalRevenue) * 100).toFixed(1);
+                        return `
                             <tr>
-                                <td><strong>${item.name}</strong></td>
-                                <td>${item.quantity_sold}</td>
-                                <td>$${item.revenue.toFixed(2)}</td>
+                                <td>${cat.category}</td>
+                                <td>$${cat.revenue.toFixed(2)}</td>
+                                <td>${percentage}%</td>
                             </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
+                        `;
+                    }).join('')}
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="report-card">
+            <h3>Top Items</h3>
+            <table class="report-table">
+                <thead>
+                    <tr>
+                        <th>Item</th>
+                        <th>Qty</th>
+                        <th>Revenue</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${data.top_items.map((item, index) => `
+                        <tr>
+                            <td>
+                                ${index === 0 ? '🥇 ' : index === 1 ? '🥈 ' : index === 2 ? '🥉 ' : ''}
+                                <strong>${item.name}</strong>
+                            </td>
+                            <td>${item.quantity_sold}</td>
+                            <td>$${item.revenue.toFixed(2)}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
         </div>
     `;
     
@@ -1498,60 +1818,92 @@ function exportReport() {
     const period = document.getElementById('report-period')?.value || 'today';
     const data = getMockReportData(period);
     
-    // Print the report
     printDailyReport(data, period);
-    
     showNotification(`Report for ${period} sent to printer`, 'success');
 }
 
-// =============================================
-// OVERVIEW DASHBOARD FUNCTIONS
-// =============================================
-
-function updateTopItems() {
-    const tbody = document.getElementById('top-items-body');
-    if (!tbody) return;
-    
-    const items = [
-        { name: 'Classic Burger', qty: 18, revenue: 233.82 },
-        { name: 'French Fries', qty: 15, revenue: 74.85 },
-        { name: 'Chicken Wings', qty: 12, revenue: 131.88 },
-        { name: 'Soda', qty: 20, revenue: 39.80 },
-        { name: 'Steak', qty: 8, revenue: 199.92 }
-    ];
-    
-    tbody.innerHTML = items.map(item => `
-        <tr>
-            <td>${item.name}</td>
-            <td>${item.qty}</td>
-            <td>$${item.revenue.toFixed(2)}</td>
-        </tr>
-    `).join('');
-}
-
-function updateLowStockAlerts() {
-    const alertsDiv = document.getElementById('low-stock-alerts');
-    if (!alertsDiv) return;
-    
-    if (!inventoryItems || inventoryItems.length === 0) {
-        alertsDiv.innerHTML = '<div class="alert-success">No low stock items</div>';
-        return;
-    }
-    
-    const lowStock = inventoryItems.filter(i => i.status === 'low' || i.stock <= i.reorder);
-    
-    if (lowStock.length === 0) {
-        alertsDiv.innerHTML = '<div class="alert-success">All stock levels are good ✓</div>';
-        return;
-    }
-    
-    alertsDiv.innerHTML = lowStock.map(item => `
-        <div class="alert-item ${item.stock === 0 ? 'alert-danger' : 'alert-warning'}">
-            <i class="fas ${item.stock === 0 ? 'fa-times-circle' : 'fa-exclamation-triangle'}"></i>
-            <span><strong>${item.name}</strong> - ${item.stock === 0 ? 'Out of stock' : `Low stock: ${item.stock} ${item.unit} remaining (Reorder at: ${item.reorder})`}</span>
-            <button class="btn btn-secondary btn-small" onclick="showReceiveStockModal(${item.id})" style="margin-left: auto;">Order</button>
+function printDailyReport(reportData, period) {
+    const reportContent = `
+        <div style="font-family: 'Courier New', monospace; max-width: 400px; margin: 0 auto; padding: 20px;">
+            <div style="text-align: center; margin-bottom: 20px;">
+                <h2 style="margin: 0; font-size: 24px;">📊 SALES REPORT</h2>
+                <p style="margin: 5px 0;">${period.toUpperCase()}</p>
+                <p>${new Date().toLocaleDateString()}</p>
+                <div style="border-top: 2px solid #000; margin: 10px 0;"></div>
+            </div>
+            
+            <div style="margin-bottom: 20px;">
+                <h3>SUMMARY</h3>
+                <div style="display: flex; justify-content: space-between;">
+                    <span>Total Sales:</span>
+                    <span>$${reportData.summary.total_sales.toFixed(2)}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span>Total Orders:</span>
+                    <span>${reportData.summary.total_orders}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span>Average Order:</span>
+                    <span>$${reportData.summary.avg_order_value.toFixed(2)}</span>
+                </div>
+            </div>
+            
+            <div style="border-top: 1px dashed #000; margin: 10px 0;"></div>
+            
+            <div style="margin-bottom: 20px;">
+                <h3>TOP ITEMS</h3>
+                <table style="width: 100%;">
+                    <thead>
+                        <tr>
+                            <th style="text-align: left;">Item</th>
+                            <th style="text-align: center;">Qty</th>
+                            <th style="text-align: right;">Revenue</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${reportData.top_items.map((item, index) => `
+                            <tr>
+                                <td>${index === 0 ? '🥇 ' : index === 1 ? '🥈 ' : index === 2 ? '🥉 ' : ''}${item.name}</td>
+                                <td style="text-align: center;">${item.quantity_sold}</td>
+                                <td style="text-align: right;">$${item.revenue.toFixed(2)}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+            
+            <div style="border-top: 2px solid #000; margin: 10px 0;"></div>
+            
+            <div style="text-align: center;">
+                <p>End of Report</p>
+            </div>
         </div>
-    `).join('');
+    `;
+    
+    const printWindow = window.open('', '_blank', 'width=500,height=700');
+    printWindow.document.write(`
+        <html>
+            <head>
+                <title>Sales Report - ${period}</title>
+                <style>
+                    body { margin: 0; padding: 20px; font-family: Arial, sans-serif; }
+                    @media print {
+                        body { margin: 0; padding: 0; }
+                    }
+                </style>
+            </head>
+            <body>
+                ${reportContent}
+                <script>
+                    window.onload = function() {
+                        window.print();
+                        setTimeout(function() { window.close(); }, 500);
+                    };
+                <\/script>
+            </body>
+        </html>
+    `);
+    printWindow.document.close();
 }
 
 // =============================================
@@ -1559,7 +1911,6 @@ function updateLowStockAlerts() {
 // =============================================
 
 function updateCharts() {
-    // Small delay to ensure DOM is ready
     setTimeout(() => {
         updateHourlyChart();
         updateCategoryChart();
@@ -1570,25 +1921,12 @@ function updateHourlyChart() {
     const canvas = document.getElementById('hourlyChart');
     if (!canvas) return;
     
-    // Get the context
     const ctx = canvas.getContext('2d');
     
-    // Get container dimensions
-    const container = canvas.closest('.chart-container');
-    if (container) {
-        // Set explicit dimensions
-        canvas.style.width = '100%';
-        canvas.style.height = '100%';
-        canvas.width = container.clientWidth;
-        canvas.height = container.clientHeight;
-    }
-    
-    // Destroy existing chart if it exists
     if (hourlyChart) {
         hourlyChart.destroy();
     }
     
-    // Create new chart
     hourlyChart = new Chart(ctx, {
         type: 'line',
         data: {
@@ -1599,54 +1937,14 @@ function updateHourlyChart() {
                 borderColor: '#3498db',
                 backgroundColor: 'rgba(52, 152, 219, 0.1)',
                 tension: 0.4,
-                fill: true,
-                pointBackgroundColor: '#3498db',
-                pointBorderColor: '#fff',
-                pointBorderWidth: 2,
-                pointRadius: 4,
-                pointHoverRadius: 6
+                fill: true
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-                legend: {
-                    display: false
-                },
-                tooltip: {
-                    backgroundColor: 'rgba(0,0,0,0.8)',
-                    titleColor: '#fff',
-                    bodyColor: '#fff',
-                    borderColor: '#3498db',
-                    borderWidth: 1
-                }
-            },
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    grid: {
-                        color: 'rgba(0,0,0,0.05)'
-                    },
-                    ticks: {
-                        callback: function(value) {
-                            return '$' + value;
-                        }
-                    }
-                },
-                x: {
-                    grid: {
-                        display: false
-                    }
-                }
-            },
-            layout: {
-                padding: {
-                    top: 10,
-                    bottom: 10,
-                    left: 10,
-                    right: 10
-                }
+                legend: { display: false }
             }
         }
     });
@@ -1656,25 +1954,12 @@ function updateCategoryChart() {
     const canvas = document.getElementById('categoryChart');
     if (!canvas) return;
     
-    // Get the context
     const ctx = canvas.getContext('2d');
     
-    // Get container dimensions
-    const container = canvas.closest('.chart-container');
-    if (container) {
-        // Set explicit dimensions
-        canvas.style.width = '100%';
-        canvas.style.height = '100%';
-        canvas.width = container.clientWidth;
-        canvas.height = container.clientHeight;
-    }
-    
-    // Destroy existing chart if it exists
     if (categoryChart) {
         categoryChart.destroy();
     }
     
-    // Create new chart
     categoryChart = new Chart(ctx, {
         type: 'doughnut',
         data: {
@@ -1682,8 +1967,7 @@ function updateCategoryChart() {
             datasets: [{
                 data: [1250, 480, 380, 195, 145],
                 backgroundColor: ['#3498db', '#27ae60', '#f39c12', '#e74c3c', '#9b59b6'],
-                borderWidth: 0,
-                hoverOffset: 10
+                borderWidth: 0
             }]
         },
         options: {
@@ -1691,38 +1975,7 @@ function updateCategoryChart() {
             maintainAspectRatio: false,
             cutout: '60%',
             plugins: {
-                legend: {
-                    position: 'bottom',
-                    labels: {
-                        boxWidth: 12,
-                        padding: 15,
-                        font: {
-                            size: 11
-                        }
-                    }
-                },
-                tooltip: {
-                    backgroundColor: 'rgba(0,0,0,0.8)',
-                    titleColor: '#fff',
-                    bodyColor: '#fff',
-                    callbacks: {
-                        label: function(context) {
-                            let label = context.label || '';
-                            let value = context.raw || 0;
-                            let total = context.dataset.data.reduce((a, b) => a + b, 0);
-                            let percentage = Math.round((value / total) * 100);
-                            return `${label}: $${value} (${percentage}%)`;
-                        }
-                    }
-                }
-            },
-            layout: {
-                padding: {
-                    top: 20,
-                    bottom: 20,
-                    left: 10,
-                    right: 10
-                }
+                legend: { position: 'bottom' }
             }
         }
     });
@@ -1746,7 +1999,6 @@ function updateDateTime() {
 }
 
 function showNotification(message, type = 'info') {
-    // Remove existing notifications
     const existing = document.querySelector('.notification');
     if (existing) existing.remove();
     
@@ -1777,13 +2029,6 @@ function showNotification(message, type = 'info') {
     
     setTimeout(() => notification.remove(), 3000);
 }
-
-// Handle window resize to redraw charts
-window.addEventListener('resize', function() {
-    if (document.getElementById('overview-tab')?.classList.contains('active')) {
-        updateCharts();
-    }
-});
 
 // Add notification animation style
 const style = document.createElement('style');
