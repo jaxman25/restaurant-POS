@@ -711,8 +711,10 @@ function initializeSalesData() {
         ];
         
         const defaultSales = [];
+        const now = new Date();
         
-        for (let i = 0; i < 20; i++) {
+        // Generate 50 random orders spread across the last 7 days
+        for (let i = 0; i < 50; i++) {
             const numItems = Math.floor(Math.random() * 3) + 1;
             const items = [];
             let total = 0;
@@ -727,12 +729,20 @@ function initializeSalesData() {
                 total += randomItem.price;
             }
             
+            // Random date within last 7 days
+            const daysAgo = Math.floor(Math.random() * 7);
+            const hoursAgo = Math.floor(Math.random() * 12) + 8; // 8 AM to 8 PM
+            const orderDate = new Date(now);
+            orderDate.setDate(orderDate.getDate() - daysAgo);
+            orderDate.setHours(hoursAgo, Math.floor(Math.random() * 60), 0);
+            
             defaultSales.push({
                 id: Date.now() - i * 1000,
                 items: items,
                 total: total,
-                timestamp: new Date(Date.now() - i * 3600000).toLocaleString(),
-                date: new Date().toLocaleDateString()
+                timestamp: orderDate.toLocaleString(),
+                date: orderDate.toLocaleDateString(),
+                hour: orderDate.getHours()
             });
         }
         
@@ -790,7 +800,7 @@ function updateTopItems() {
                 
                 if (itemSales.has(itemName)) {
                     const existing = itemSales.get(itemName);
-                    existing.quantity += 1; // Increment by 1 for each occurrence
+                    existing.quantity += 1;
                     existing.revenue += itemPrice;
                 } else {
                     itemSales.set(itemName, {
@@ -805,8 +815,8 @@ function updateTopItems() {
     
     // Convert to array and sort by revenue in DESCENDING order
     const topItems = Array.from(itemSales.values())
-        .sort((a, b) => b.revenue - a.revenue) // b.revenue - a.revenue = descending (highest first)
-        .slice(0, 5); // Get top 5
+        .sort((a, b) => b.revenue - a.revenue)
+        .slice(0, 5);
     
     if (topItems.length === 0) {
         tbody.innerHTML = '<tr><td colspan="3" class="loading">No sales data yet</td></tr>';
@@ -918,26 +928,29 @@ function saveOrderToSalesHistory(order) {
         }
         
         // Save items as they are - each occurrence will be counted separately
-        // This ensures proper quantity counting in updateTopItems
         const orderItems = order.items.map(item => ({
             name: item.name,
             price: item.price
         }));
         
+        const now = new Date();
+        
         salesData.push({
             id: order.id,
             items: orderItems,
             total: order.total,
-            timestamp: order.timestamp || new Date().toLocaleString(),
-            date: new Date().toLocaleDateString()
+            timestamp: order.timestamp || now.toLocaleString(),
+            date: now.toLocaleDateString(),
+            hour: now.getHours()
         });
         
-        if (salesData.length > 100) {
-            salesData = salesData.slice(-100);
+        if (salesData.length > 500) { // Keep last 500 orders
+            salesData = salesData.slice(-500);
         }
         
         localStorage.setItem('dailySales', JSON.stringify(salesData));
         updateTopItems();
+        updateCharts(); // Update charts when new order is added
     } catch (e) {
         console.error('Error saving order:', e);
     }
@@ -1360,7 +1373,6 @@ function printReceipt(order) {
         `);
         printWindow.document.close();
     } else {
-        // If popup is blocked, show a notification
         showNotification('Please allow popups to print receipt', 'warning');
     }
 }
@@ -1429,7 +1441,7 @@ function printKitchenTicket(order) {
             <head>
                 <title>Kitchen Ticket - Order #${order.id}</title>
                 <style>
-                    body { margin: 0; padding: 20px; }
+                    body { margin: 0; padding: 20px; font-family: 'Courier New', monospace; }
                     @media print {
                         body { margin: 0; padding: 0; }
                     }
@@ -1439,8 +1451,10 @@ function printKitchenTicket(order) {
                 ${ticketContent}
                 <script>
                     window.onload = function() {
-                        window.print();
-                        setTimeout(function() { window.close(); }, 500);
+                        setTimeout(function() {
+                            window.print();
+                            setTimeout(function() { window.close(); }, 500);
+                        }, 100);
                     };
                 <\/script>
             </body>
@@ -1661,6 +1675,253 @@ function clearCompletedOrders() {
 }
 
 // =============================================
+// CHART FUNCTIONS - UPDATED WITH REAL-TIME DATA
+// =============================================
+
+function updateCharts() {
+    setTimeout(() => {
+        updateHourlyChart();
+        updateCategoryChart();
+    }, 100);
+}
+
+function updateHourlyChart() {
+    const canvas = document.getElementById('hourlyChart');
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    const period = document.getElementById('hourly-period')?.value || 'today';
+    
+    // Get sales data from localStorage
+    let salesData = [];
+    try {
+        const saved = localStorage.getItem('dailySales');
+        if (saved) {
+            salesData = JSON.parse(saved);
+        }
+    } catch (e) {
+        console.error('Error loading sales data:', e);
+    }
+    
+    // Filter data based on selected period
+    const now = new Date();
+    const today = now.toLocaleDateString();
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toLocaleDateString();
+    
+    let filteredSales = [];
+    const hourlyData = [0, 0, 0, 0, 0, 0, 0]; // 11 AM to 5 PM (7 hours)
+    const hourLabels = ['11 AM', '12 PM', '1 PM', '2 PM', '3 PM', '4 PM', '5 PM'];
+    const hourValues = [11, 12, 13, 14, 15, 16, 17]; // 24-hour format
+    
+    if (period === 'today') {
+        // Filter for today's sales
+        filteredSales = salesData.filter(sale => sale.date === today);
+    } else if (period === 'yesterday') {
+        // Filter for yesterday's sales
+        filteredSales = salesData.filter(sale => sale.date === yesterdayStr);
+    }
+    
+    // Aggregate sales by hour
+    filteredSales.forEach(sale => {
+        const saleHour = sale.hour || new Date(sale.timestamp).getHours();
+        
+        // Find which hour bucket this belongs to
+        for (let i = 0; i < hourValues.length; i++) {
+            if (saleHour === hourValues[i]) {
+                hourlyData[i] += sale.total;
+                break;
+            }
+        }
+    });
+    
+    // Round to 2 decimal places
+    const roundedData = hourlyData.map(value => Math.round(value * 100) / 100);
+    
+    // Destroy existing chart if it exists
+    if (hourlyChart) {
+        hourlyChart.destroy();
+    }
+    
+    // Create new chart
+    hourlyChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: hourLabels,
+            datasets: [{
+                label: `Sales (${period === 'today' ? 'Today' : 'Yesterday'})`,
+                data: roundedData,
+                borderColor: '#3498db',
+                backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                tension: 0.4,
+                fill: true,
+                pointBackgroundColor: '#3498db',
+                pointBorderColor: '#fff',
+                pointBorderWidth: 2,
+                pointRadius: 4,
+                pointHoverRadius: 6
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top',
+                    labels: {
+                        font: {
+                            size: 12
+                        }
+                    }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.dataset.label || '';
+                            let value = context.raw || 0;
+                            return `${label}: $${value.toFixed(2)}`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            return '$' + value;
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+function updateCategoryChart() {
+    const canvas = document.getElementById('categoryChart');
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    const period = document.getElementById('category-period')?.value || 'today';
+    
+    // Get sales data from localStorage
+    let salesData = [];
+    try {
+        const saved = localStorage.getItem('dailySales');
+        if (saved) {
+            salesData = JSON.parse(saved);
+        }
+    } catch (e) {
+        console.error('Error loading sales data:', e);
+    }
+    
+    // Filter data based on selected period
+    const now = new Date();
+    const today = now.toLocaleDateString();
+    const weekAgo = new Date(now);
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    
+    let filteredSales = [];
+    
+    if (period === 'today') {
+        // Filter for today's sales
+        filteredSales = salesData.filter(sale => sale.date === today);
+    } else if (period === 'week') {
+        // Filter for last 7 days
+        filteredSales = salesData.filter(sale => {
+            const saleDate = new Date(sale.timestamp);
+            return saleDate >= weekAgo;
+        });
+    }
+    
+    // Define categories and their colors
+    const categories = ['Mains', 'Drinks', 'Appetizers', 'Sides', 'Desserts'];
+    const colors = ['#3498db', '#27ae60', '#f39c12', '#e74c3c', '#9b59b6'];
+    const categoryRevenue = [0, 0, 0, 0, 0];
+    
+    // Define item to category mapping
+    const itemCategoryMap = {
+        'Classic Burger': 'Mains',
+        'Cheeseburger': 'Mains',
+        'Steak': 'Mains',
+        'Soda': 'Drinks',
+        'Chicken Wings': 'Appetizers',
+        'Caesar Salad': 'Appetizers',
+        'French Fries': 'Sides',
+        'Ice Cream': 'Desserts'
+    };
+    
+    // Aggregate revenue by category
+    filteredSales.forEach(sale => {
+        if (sale.items && Array.isArray(sale.items)) {
+            sale.items.forEach(item => {
+                const category = itemCategoryMap[item.name] || 'Other';
+                const categoryIndex = categories.indexOf(category);
+                
+                if (categoryIndex !== -1) {
+                    categoryRevenue[categoryIndex] += item.price || 0;
+                }
+            });
+        }
+    });
+    
+    // Round to 2 decimal places
+    const roundedRevenue = categoryRevenue.map(value => Math.round(value * 100) / 100);
+    
+    // Calculate total for percentages
+    const total = roundedRevenue.reduce((sum, val) => sum + val, 0);
+    
+    // Destroy existing chart if it exists
+    if (categoryChart) {
+        categoryChart.destroy();
+    }
+    
+    // Create new chart
+    categoryChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: categories,
+            datasets: [{
+                data: roundedRevenue,
+                backgroundColor: colors,
+                borderWidth: 0,
+                hoverOffset: 10
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '60%',
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        boxWidth: 12,
+                        padding: 15,
+                        font: {
+                            size: 11
+                        }
+                    }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.label || '';
+                            let value = context.raw || 0;
+                            let percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                            return `${label}: $${value.toFixed(2)} (${percentage}%)`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+// =============================================
 // REPORTS FUNCTIONS
 // =============================================
 
@@ -1673,136 +1934,365 @@ function loadReports() {
 }
 
 function getMockReportData(period) {
-    if (period === 'today') {
-        return {
-            summary: { total_sales: 2450.75, total_orders: 42, avg_order_value: 58.35 },
-            by_category: [
-                { category: 'Mains', revenue: 1250.50 },
-                { category: 'Drinks', revenue: 480.25 },
-                { category: 'Appetizers', revenue: 380.00 },
-                { category: 'Sides', revenue: 195.00 },
-                { category: 'Desserts', revenue: 145.00 }
-            ],
-            top_items: [
-                { name: 'Classic Burger', quantity_sold: 18, revenue: 233.82 },
-                { name: 'Steak', quantity_sold: 8, revenue: 199.92 },
-                { name: 'Chicken Wings', quantity_sold: 12, revenue: 131.88 },
-                { name: 'French Fries', quantity_sold: 15, revenue: 74.85 },
-                { name: 'Soda', quantity_sold: 20, revenue: 39.80 }
-            ]
-        };
-    } else if (period === 'week') {
-        return {
-            summary: { total_sales: 15750.50, total_orders: 285, avg_order_value: 55.26 },
-            by_category: [
-                { category: 'Mains', revenue: 8250.75 },
-                { category: 'Drinks', revenue: 3150.25 },
-                { category: 'Appetizers', revenue: 2350.50 },
-                { category: 'Sides', revenue: 1250.00 },
-                { category: 'Desserts', revenue: 749.00 }
-            ],
-            top_items: [
-                { name: 'Classic Burger', quantity_sold: 125, revenue: 1623.75 },
-                { name: 'Steak', quantity_sold: 65, revenue: 1624.35 },
-                { name: 'Chicken Wings', quantity_sold: 95, revenue: 1044.05 },
-                { name: 'French Fries', quantity_sold: 110, revenue: 548.90 },
-                { name: 'Soda', quantity_sold: 180, revenue: 358.20 }
-            ]
-        };
-    } else {
-        return {
-            summary: { total_sales: 62500.25, total_orders: 1120, avg_order_value: 55.80 },
-            by_category: [
-                { category: 'Mains', revenue: 32750.50 },
-                { category: 'Drinks', revenue: 12500.75 },
-                { category: 'Appetizers', revenue: 9250.00 },
-                { category: 'Sides', revenue: 4500.00 },
-                { category: 'Desserts', revenue: 3499.00 }
-            ],
-            top_items: [
-                { name: 'Steak', quantity_sold: 280, revenue: 6997.20 },
-                { name: 'Classic Burger', quantity_sold: 520, revenue: 6754.80 },
-                { name: 'Chicken Wings', quantity_sold: 410, revenue: 4505.90 },
-                { name: 'French Fries', quantity_sold: 485, revenue: 2420.15 },
-                { name: 'Soda', quantity_sold: 750, revenue: 1492.50 }
-            ]
-        };
+    // Get real sales data from localStorage
+    let salesData = [];
+    try {
+        const saved = localStorage.getItem('dailySales');
+        if (saved) {
+            salesData = JSON.parse(saved);
+        }
+    } catch (e) {
+        console.error('Error loading sales data:', e);
     }
+    
+    const now = new Date();
+    const today = now.toLocaleDateString();
+    const weekAgo = new Date(now);
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    const monthAgo = new Date(now);
+    monthAgo.setDate(monthAgo.getDate() - 30);
+    
+    let filteredSales = [];
+    
+    if (period === 'today') {
+        filteredSales = salesData.filter(sale => sale.date === today);
+    } else if (period === 'week') {
+        filteredSales = salesData.filter(sale => {
+            const saleDate = new Date(sale.timestamp);
+            return saleDate >= weekAgo;
+        });
+    } else if (period === 'month') {
+        filteredSales = salesData.filter(sale => {
+            const saleDate = new Date(sale.timestamp);
+            return saleDate >= monthAgo;
+        });
+    }
+    
+    // Calculate summary
+    const totalSales = filteredSales.reduce((sum, sale) => sum + (sale.total || 0), 0);
+    const totalOrders = filteredSales.length;
+    const avgOrderValue = totalOrders > 0 ? totalSales / totalOrders : 0;
+    
+    // Calculate category revenue
+    const itemCategoryMap = {
+        'Classic Burger': 'Mains',
+        'Cheeseburger': 'Mains',
+        'Steak': 'Mains',
+        'Soda': 'Drinks',
+        'Chicken Wings': 'Appetizers',
+        'Caesar Salad': 'Appetizers',
+        'French Fries': 'Sides',
+        'Ice Cream': 'Desserts'
+    };
+    
+    const categoryRevenue = {
+        'Mains': 0,
+        'Drinks': 0,
+        'Appetizers': 0,
+        'Sides': 0,
+        'Desserts': 0
+    };
+    
+    filteredSales.forEach(sale => {
+        if (sale.items && Array.isArray(sale.items)) {
+            sale.items.forEach(item => {
+                const category = itemCategoryMap[item.name] || 'Other';
+                if (categoryRevenue.hasOwnProperty(category)) {
+                    categoryRevenue[category] += item.price || 0;
+                }
+            });
+        }
+    });
+    
+    const byCategory = Object.keys(categoryRevenue).map(category => ({
+        category: category,
+        revenue: categoryRevenue[category]
+    }));
+    
+    // Calculate top items
+    const itemSales = new Map();
+    filteredSales.forEach(sale => {
+        if (sale.items && Array.isArray(sale.items)) {
+            sale.items.forEach(item => {
+                const itemName = item.name;
+                if (itemSales.has(itemName)) {
+                    const existing = itemSales.get(itemName);
+                    existing.quantity += 1;
+                    existing.revenue += item.price || 0;
+                } else {
+                    itemSales.set(itemName, {
+                        name: itemName,
+                        quantity: 1,
+                        revenue: item.price || 0
+                    });
+                }
+            });
+        }
+    });
+    
+    const topItems = Array.from(itemSales.values())
+        .sort((a, b) => b.revenue - a.revenue)
+        .slice(0, 5)
+        .map(item => ({
+            name: item.name,
+            quantity_sold: item.quantity,
+            revenue: item.revenue
+        }));
+    
+    return {
+        summary: {
+            total_sales: totalSales,
+            total_orders: totalOrders,
+            avg_order_value: avgOrderValue
+        },
+        by_category: byCategory,
+        top_items: topItems
+    };
 }
 
 function renderReports(data) {
     const reportDiv = document.getElementById('report-data');
     if (!reportDiv) return;
     
-    const totalRevenue = data.summary.total_sales;
-    
+    // Beautiful report HTML with styled tables for dashboard view
     let html = `
-        <div class="report-card">
-            <h3>Summary</h3>
-            <div class="report-stats">
-                <div class="stat">
-                    <span class="stat-label">Total Sales:</span>
-                    <span class="stat-value">$${data.summary.total_sales.toFixed(2)}</span>
-                </div>
-                <div class="stat">
-                    <span class="stat-label">Total Orders:</span>
-                    <span class="stat-value">${data.summary.total_orders}</span>
-                </div>
-                <div class="stat">
-                    <span class="stat-label">Average Order:</span>
-                    <span class="stat-value">$${data.summary.avg_order_value.toFixed(2)}</span>
+        <style>
+            .report-container {
+                display: flex;
+                flex-direction: column;
+                gap: 25px;
+            }
+            
+            .report-card {
+                background: white;
+                border-radius: 12px;
+                padding: 20px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+                border: 1px solid #e0e0e0;
+            }
+            
+            .report-card h3 {
+                margin: 0 0 20px 0;
+                color: #2c3e50;
+                font-size: 1.3rem;
+                font-weight: 600;
+                padding-bottom: 10px;
+                border-bottom: 2px solid #3498db;
+            }
+            
+            .stats-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                gap: 20px;
+            }
+            
+            .stat-item {
+                background: #f8f9fa;
+                padding: 20px;
+                border-radius: 10px;
+                text-align: center;
+                border-left: 4px solid #3498db;
+            }
+            
+            .stat-label {
+                color: #7f8c8d;
+                font-size: 0.9rem;
+                margin-bottom: 8px;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+            
+            .stat-value {
+                color: #2c3e50;
+                font-size: 1.8rem;
+                font-weight: 700;
+            }
+            
+            .stat-value.sales {
+                color: #27ae60;
+            }
+            
+            .stat-value.orders {
+                color: #3498db;
+            }
+            
+            .stat-value.avg {
+                color: #e67e22;
+            }
+            
+            .report-table {
+                width: 100%;
+                border-collapse: collapse;
+                background: white;
+                border-radius: 10px;
+                overflow: hidden;
+            }
+            
+            .report-table thead {
+                background: linear-gradient(135deg, #2c3e50, #3498db);
+                color: white;
+            }
+            
+            .report-table th {
+                padding: 15px;
+                text-align: left;
+                font-weight: 600;
+                font-size: 0.95rem;
+                letter-spacing: 0.5px;
+            }
+            
+            .report-table td {
+                padding: 12px 15px;
+                border-bottom: 1px solid #e0e0e0;
+            }
+            
+            .report-table tbody tr:hover {
+                background-color: #f5f9ff;
+                transition: background-color 0.2s;
+            }
+            
+            .report-table tbody tr:last-child td {
+                border-bottom: none;
+            }
+            
+            .category-badge {
+                display: inline-block;
+                padding: 4px 12px;
+                border-radius: 20px;
+                font-size: 0.85rem;
+                font-weight: 500;
+            }
+            
+            .badge-mains { background: #3498db20; color: #2980b9; }
+            .badge-drinks { background: #27ae6020; color: #27ae60; }
+            .badge-appetizers { background: #f39c1220; color: #e67e22; }
+            .badge-sides { background: #e74c3c20; color: #c0392b; }
+            .badge-desserts { background: #9b59b620; color: #8e44ad; }
+            
+            .revenue-positive {
+                color: #27ae60;
+                font-weight: 600;
+            }
+            
+            .percentage-bar {
+                display: inline-block;
+                width: 50px;
+                height: 6px;
+                background: #ecf0f1;
+                border-radius: 3px;
+                margin-left: 10px;
+                vertical-align: middle;
+            }
+            
+            .percentage-fill {
+                height: 100%;
+                background: #3498db;
+                border-radius: 3px;
+            }
+            
+            .top-item-rank {
+                display: inline-block;
+                width: 30px;
+                height: 30px;
+                border-radius: 50%;
+                text-align: center;
+                line-height: 30px;
+                font-weight: 700;
+                margin-right: 10px;
+            }
+            
+            .rank-1 { background: #f1c40f; color: white; }
+            .rank-2 { background: #bdc3c7; color: white; }
+            .rank-3 { background: #e67e22; color: white; }
+        </style>
+        
+        <div class="report-container">
+            <!-- Summary Cards -->
+            <div class="report-card">
+                <h3>📊 Sales Summary</h3>
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <div class="stat-label">Total Sales</div>
+                        <div class="stat-value sales">$${data.summary.total_sales.toFixed(2)}</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">Total Orders</div>
+                        <div class="stat-value orders">${data.summary.total_orders}</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">Average Order</div>
+                        <div class="stat-value avg">$${data.summary.avg_order_value.toFixed(2)}</div>
+                    </div>
                 </div>
             </div>
-        </div>
-        
-        <div class="report-card">
-            <h3>Sales by Category</h3>
-            <table class="report-table">
-                <thead>
-                    <tr>
-                        <th>Category</th>
-                        <th>Revenue</th>
-                        <th>%</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${data.by_category.map(cat => {
-                        const percentage = ((cat.revenue / totalRevenue) * 100).toFixed(1);
-                        return `
-                            <tr>
-                                <td>${cat.category}</td>
-                                <td>$${cat.revenue.toFixed(2)}</td>
-                                <td>${percentage}%</td>
-                            </tr>
-                        `;
-                    }).join('')}
-                </tbody>
-            </table>
-        </div>
-        
-        <div class="report-card">
-            <h3>Top Items</h3>
-            <table class="report-table">
-                <thead>
-                    <tr>
-                        <th>Item</th>
-                        <th>Qty</th>
-                        <th>Revenue</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${data.top_items.map((item, index) => `
+            
+            <!-- Sales by Category -->
+            <div class="report-card">
+                <h3>📈 Sales by Category</h3>
+                <table class="report-table">
+                    <thead>
                         <tr>
-                            <td>
-                                ${index === 0 ? '🥇 ' : index === 1 ? '🥈 ' : index === 2 ? '🥉 ' : ''}
-                                <strong>${item.name}</strong>
-                            </td>
-                            <td>${item.quantity_sold}</td>
-                            <td>$${item.revenue.toFixed(2)}</td>
+                            <th>Category</th>
+                            <th>Revenue</th>
+                            <th>Percentage</th>
+                            <th>Distribution</th>
                         </tr>
-                    `).join('')}
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        ${data.by_category.map((cat, index) => {
+                            const badgeClass = 
+                                cat.category === 'Mains' ? 'badge-mains' :
+                                cat.category === 'Drinks' ? 'badge-drinks' :
+                                cat.category === 'Appetizers' ? 'badge-appetizers' :
+                                cat.category === 'Sides' ? 'badge-sides' : 'badge-desserts';
+                            
+                            const percentage = data.summary.total_sales > 0 ? ((cat.revenue / data.summary.total_sales) * 100).toFixed(1) : 0;
+                            
+                            return `
+                                <tr>
+                                    <td>
+                                        <span class="category-badge ${badgeClass}">${cat.category}</span>
+                                    </td>
+                                    <td class="revenue-positive">$${cat.revenue.toFixed(2)}</td>
+                                    <td><strong>${percentage}%</strong></td>
+                                    <td>
+                                        <div class="percentage-bar">
+                                            <div class="percentage-fill" style="width: ${percentage}%"></div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Top Items -->
+            <div class="report-card">
+                <h3>🏆 Top Selling Items</h3>
+                <table class="report-table">
+                    <thead>
+                        <tr>
+                            <th>Rank</th>
+                            <th>Item</th>
+                            <th>Quantity Sold</th>
+                            <th>Revenue</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${data.top_items.map((item, index) => `
+                            <tr>
+                                <td>
+                                    <span class="top-item-rank rank-${index + 1}">${index + 1}</span>
+                                </td>
+                                <td><strong>${item.name}</strong></td>
+                                <td>${item.quantity_sold}</td>
+                                <td class="revenue-positive">$${item.revenue.toFixed(2)}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
         </div>
     `;
     
@@ -1823,162 +2313,280 @@ function exportReport() {
 }
 
 function printDailyReport(reportData, period) {
+    // Beautifully formatted exported version - professional and clean
     const reportContent = `
-        <div style="font-family: 'Courier New', monospace; max-width: 400px; margin: 0 auto; padding: 20px;">
-            <div style="text-align: center; margin-bottom: 20px;">
-                <h2 style="margin: 0; font-size: 24px;">📊 SALES REPORT</h2>
-                <p style="margin: 5px 0;">${period.toUpperCase()}</p>
-                <p>${new Date().toLocaleDateString()}</p>
-                <div style="border-top: 2px solid #000; margin: 10px 0;"></div>
-            </div>
-            
-            <div style="margin-bottom: 20px;">
-                <h3>SUMMARY</h3>
-                <div style="display: flex; justify-content: space-between;">
-                    <span>Total Sales:</span>
-                    <span>$${reportData.summary.total_sales.toFixed(2)}</span>
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Sales Report - ${period}</title>
+            <style>
+                body {
+                    font-family: 'Helvetica', 'Arial', sans-serif;
+                    margin: 0;
+                    padding: 20px;
+                    background: #fff;
+                    color: #333;
+                }
+                .report-container {
+                    max-width: 800px;
+                    margin: 0 auto;
+                    background: white;
+                    padding: 30px;
+                    box-shadow: 0 0 20px rgba(0,0,0,0.1);
+                    border-radius: 10px;
+                }
+                .header {
+                    text-align: center;
+                    margin-bottom: 30px;
+                    padding-bottom: 20px;
+                    border-bottom: 3px solid #2c3e50;
+                }
+                .header h1 {
+                    color: #2c3e50;
+                    margin: 0;
+                    font-size: 28px;
+                    font-weight: 600;
+                }
+                .header h2 {
+                    color: #7f8c8d;
+                    margin: 5px 0 0;
+                    font-size: 16px;
+                    font-weight: normal;
+                }
+                .header .date {
+                    color: #3498db;
+                    font-size: 14px;
+                    margin-top: 10px;
+                }
+                .summary-section {
+                    background: #f8f9fa;
+                    border-radius: 10px;
+                    padding: 20px;
+                    margin-bottom: 30px;
+                    border-left: 5px solid #3498db;
+                }
+                .summary-title {
+                    font-size: 18px;
+                    font-weight: 600;
+                    color: #2c3e50;
+                    margin: 0 0 15px 0;
+                    text-transform: uppercase;
+                    letter-spacing: 1px;
+                }
+                .summary-grid {
+                    display: grid;
+                    grid-template-columns: repeat(3, 1fr);
+                    gap: 20px;
+                }
+                .summary-item {
+                    text-align: center;
+                }
+                .summary-label {
+                    color: #7f8c8d;
+                    font-size: 12px;
+                    text-transform: uppercase;
+                    margin-bottom: 5px;
+                }
+                .summary-value {
+                    font-size: 24px;
+                    font-weight: bold;
+                }
+                .summary-value.sales { color: #27ae60; }
+                .summary-value.orders { color: #3498db; }
+                .summary-value.avg { color: #e67e22; }
+                
+                .section {
+                    margin-bottom: 30px;
+                }
+                .section-title {
+                    font-size: 18px;
+                    font-weight: 600;
+                    color: #2c3e50;
+                    margin: 0 0 15px 0;
+                    padding-bottom: 10px;
+                    border-bottom: 2px solid #3498db;
+                }
+                table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    background: white;
+                    border-radius: 8px;
+                    overflow: hidden;
+                    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+                }
+                th {
+                    background: #34495e;
+                    color: white;
+                    font-weight: 600;
+                    padding: 12px;
+                    text-align: left;
+                    font-size: 14px;
+                }
+                td {
+                    padding: 10px 12px;
+                    border-bottom: 1px solid #ecf0f1;
+                }
+                tr:last-child td {
+                    border-bottom: none;
+                }
+                tr:nth-child(even) {
+                    background: #f8f9fa;
+                }
+                .category-row td:first-child {
+                    font-weight: 500;
+                }
+                .amount {
+                    font-weight: 600;
+                    color: #27ae60;
+                }
+                .footer {
+                    margin-top: 40px;
+                    padding-top: 20px;
+                    border-top: 2px dashed #bdc3c7;
+                    text-align: center;
+                    color: #7f8c8d;
+                    font-size: 12px;
+                }
+                .footer p {
+                    margin: 5px 0;
+                }
+                .print-button {
+                    display: block;
+                    width: 200px;
+                    margin: 20px auto;
+                    padding: 12px 24px;
+                    background: #3498db;
+                    color: white;
+                    border: none;
+                    border-radius: 5px;
+                    font-size: 16px;
+                    cursor: pointer;
+                    text-align: center;
+                    text-decoration: none;
+                }
+                .print-button:hover {
+                    background: #2980b9;
+                }
+                @media print {
+                    .print-button {
+                        display: none;
+                    }
+                    body {
+                        padding: 0;
+                        background: white;
+                    }
+                    .report-container {
+                        box-shadow: none;
+                        padding: 15px;
+                    }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="report-container">
+                <div class="header">
+                    <h1>🍔 RESTAURANT POS</h1>
+                    <h2>Sales Report - ${period.toUpperCase()}</h2>
+                    <div class="date">Generated on: ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}</div>
                 </div>
-                <div style="display: flex; justify-content: space-between;">
-                    <span>Total Orders:</span>
-                    <span>${reportData.summary.total_orders}</span>
+                
+                <div class="summary-section">
+                    <div class="summary-title">Executive Summary</div>
+                    <div class="summary-grid">
+                        <div class="summary-item">
+                            <div class="summary-label">Total Sales</div>
+                            <div class="summary-value sales">$${reportData.summary.total_sales.toFixed(2)}</div>
+                        </div>
+                        <div class="summary-item">
+                            <div class="summary-label">Total Orders</div>
+                            <div class="summary-value orders">${reportData.summary.total_orders}</div>
+                        </div>
+                        <div class="summary-item">
+                            <div class="summary-label">Average Order</div>
+                            <div class="summary-value avg">$${reportData.summary.avg_order_value.toFixed(2)}</div>
+                        </div>
+                    </div>
                 </div>
-                <div style="display: flex; justify-content: space-between;">
-                    <span>Average Order:</span>
-                    <span>$${reportData.summary.avg_order_value.toFixed(2)}</span>
-                </div>
-            </div>
-            
-            <div style="border-top: 1px dashed #000; margin: 10px 0;"></div>
-            
-            <div style="margin-bottom: 20px;">
-                <h3>TOP ITEMS</h3>
-                <table style="width: 100%;">
-                    <thead>
-                        <tr>
-                            <th style="text-align: left;">Item</th>
-                            <th style="text-align: center;">Qty</th>
-                            <th style="text-align: right;">Revenue</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${reportData.top_items.map((item, index) => `
+                
+                <div class="section">
+                    <div class="section-title">📊 Sales by Category</div>
+                    <table>
+                        <thead>
                             <tr>
-                                <td>${index === 0 ? '🥇 ' : index === 1 ? '🥈 ' : index === 2 ? '🥉 ' : ''}${item.name}</td>
-                                <td style="text-align: center;">${item.quantity_sold}</td>
-                                <td style="text-align: right;">$${item.revenue.toFixed(2)}</td>
+                                <th>Category</th>
+                                <th>Revenue</th>
+                                <th>Percentage</th>
                             </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            ${reportData.by_category.map(cat => {
+                                const percentage = reportData.summary.total_sales > 0 ? ((cat.revenue / reportData.summary.total_sales) * 100).toFixed(1) : 0;
+                                return `
+                                    <tr class="category-row">
+                                        <td><strong>${cat.category}</strong></td>
+                                        <td class="amount">$${cat.revenue.toFixed(2)}</td>
+                                        <td>${percentage}%</td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                            <tr style="background: #ecf0f1; font-weight: bold;">
+                                <td>TOTAL</td>
+                                <td class="amount">$${reportData.summary.total_sales.toFixed(2)}</td>
+                                <td>100%</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div class="section">
+                    <div class="section-title">🏆 Top Selling Items</div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Rank</th>
+                                <th>Item</th>
+                                <th>Quantity Sold</th>
+                                <th>Revenue</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${reportData.top_items.map((item, index) => `
+                                <tr>
+                                    <td><strong>#${index + 1}</strong></td>
+                                    <td>${item.name}</td>
+                                    <td>${item.quantity_sold}</td>
+                                    <td class="amount">$${item.revenue.toFixed(2)}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div class="footer">
+                    <p>Thank you for using Restaurant POS System</p>
+                    <p>123 Main Street, City | Tel: (555) 123-4567</p>
+                    <p>This report was generated automatically. For questions, please contact management.</p>
+                </div>
+                
+                <button class="print-button" onclick="window.print()">🖨️ Print Report</button>
             </div>
             
-            <div style="border-top: 2px solid #000; margin: 10px 0;"></div>
-            
-            <div style="text-align: center;">
-                <p>End of Report</p>
-            </div>
-        </div>
+            <script>
+                // Auto-print when window loads (optional - comment out if not wanted)
+                // window.onload = function() { setTimeout(function() { window.print(); }, 500); };
+            <\/script>
+        </body>
+        </html>
     `;
     
-    const printWindow = window.open('', '_blank', 'width=500,height=700');
-    printWindow.document.write(`
-        <html>
-            <head>
-                <title>Sales Report - ${period}</title>
-                <style>
-                    body { margin: 0; padding: 20px; font-family: Arial, sans-serif; }
-                    @media print {
-                        body { margin: 0; padding: 0; }
-                    }
-                </style>
-            </head>
-            <body>
-                ${reportContent}
-                <script>
-                    window.onload = function() {
-                        window.print();
-                        setTimeout(function() { window.close(); }, 500);
-                    };
-                <\/script>
-            </body>
-        </html>
-    `);
-    printWindow.document.close();
-}
-
-// =============================================
-// CHARTS
-// =============================================
-
-function updateCharts() {
-    setTimeout(() => {
-        updateHourlyChart();
-        updateCategoryChart();
-    }, 100);
-}
-
-function updateHourlyChart() {
-    const canvas = document.getElementById('hourlyChart');
-    if (!canvas) return;
-    
-    const ctx = canvas.getContext('2d');
-    
-    if (hourlyChart) {
-        hourlyChart.destroy();
+    // Open print window with the beautifully formatted report
+    const printWindow = window.open('', '_blank', 'width=900,height=700');
+    if (printWindow) {
+        printWindow.document.write(reportContent);
+        printWindow.document.close();
+    } else {
+        showNotification('Please allow popups to print the report', 'warning');
     }
-    
-    hourlyChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: ['11 AM', '12 PM', '1 PM', '2 PM', '3 PM', '4 PM', '5 PM'],
-            datasets: [{
-                label: 'Sales ($)',
-                data: [180, 650, 820, 420, 280, 190, 380],
-                borderColor: '#3498db',
-                backgroundColor: 'rgba(52, 152, 219, 0.1)',
-                tension: 0.4,
-                fill: true
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { display: false }
-            }
-        }
-    });
-}
-
-function updateCategoryChart() {
-    const canvas = document.getElementById('categoryChart');
-    if (!canvas) return;
-    
-    const ctx = canvas.getContext('2d');
-    
-    if (categoryChart) {
-        categoryChart.destroy();
-    }
-    
-    categoryChart = new Chart(ctx, {
-        type: 'doughnut',
-        data: {
-            labels: ['Mains', 'Drinks', 'Appetizers', 'Sides', 'Desserts'],
-            datasets: [{
-                data: [1250, 480, 380, 195, 145],
-                backgroundColor: ['#3498db', '#27ae60', '#f39c12', '#e74c3c', '#9b59b6'],
-                borderWidth: 0
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            cutout: '60%',
-            plugins: {
-                legend: { position: 'bottom' }
-            }
-        }
-    });
 }
 
 // =============================================
