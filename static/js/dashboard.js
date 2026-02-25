@@ -108,25 +108,25 @@ function login() {
     const demoUsers = {
         '1234': { 
             id: 1, 
-            name: 'Admin User', 
+            name: 'Admin', 
             role: 'admin', 
             permissions: { pos: true, inventory: true, reports: true, staff: true, settings: true } 
         },
         '1111': { 
             id: 2, 
-            name: 'John Manager', 
+            name: 'Manager', 
             role: 'manager', 
             permissions: { pos: true, inventory: true, reports: true, staff: false, settings: false } 
         },
         '2222': { 
             id: 3, 
-            name: 'Sarah Staff', 
+            name: 'Staff', 
             role: 'staff', 
             permissions: { pos: true, inventory: false, reports: false, staff: false, settings: false } 
         },
         '3333': { 
             id: 4, 
-            name: 'Mike Cook', 
+            name: 'Cook', 
             role: 'cook', 
             permissions: { pos: true, inventory: false, reports: false, staff: false, settings: false } 
         }
