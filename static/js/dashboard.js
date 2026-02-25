@@ -108,25 +108,25 @@ function login() {
     const demoUsers = {
         '1234': { 
             id: 1, 
-            name: 'Admin', 
+            name: 'Admin User', 
             role: 'admin', 
             permissions: { pos: true, inventory: true, reports: true, staff: true, settings: true } 
         },
         '1111': { 
             id: 2, 
-            name: 'Manager', 
+            name: 'John Manager', 
             role: 'manager', 
             permissions: { pos: true, inventory: true, reports: true, staff: false, settings: false } 
         },
         '2222': { 
             id: 3, 
-            name: 'Staff', 
+            name: 'Sarah Staff', 
             role: 'staff', 
             permissions: { pos: true, inventory: false, reports: false, staff: false, settings: false } 
         },
         '3333': { 
             id: 4, 
-            name: 'Cook', 
+            name: 'Mike Cook', 
             role: 'cook', 
             permissions: { pos: true, inventory: false, reports: false, staff: false, settings: false } 
         }
@@ -713,8 +713,8 @@ function initializeSalesData() {
         const defaultSales = [];
         const now = new Date();
         
-        // Generate 50 random orders spread across the last 7 days
-        for (let i = 0; i < 50; i++) {
+        // Generate 100 random orders spread across the last 7 days (8 AM - 9 PM)
+        for (let i = 0; i < 100; i++) {
             const numItems = Math.floor(Math.random() * 3) + 1;
             const items = [];
             let total = 0;
@@ -731,7 +731,8 @@ function initializeSalesData() {
             
             // Random date within last 7 days
             const daysAgo = Math.floor(Math.random() * 7);
-            const hoursAgo = Math.floor(Math.random() * 12) + 8; // 8 AM to 8 PM
+            // Random hour between 8 AM (8) and 9 PM (21)
+            const hoursAgo = Math.floor(Math.random() * 14) + 8; // 8 to 21 (8 AM to 9 PM)
             const orderDate = new Date(now);
             orderDate.setDate(orderDate.getDate() - daysAgo);
             orderDate.setHours(hoursAgo, Math.floor(Math.random() * 60), 0);
@@ -904,7 +905,7 @@ function updateLowStockAlerts() {
         const alertItem = document.createElement('div');
         alertItem.className = 'alert alert-warning';
         alertItem.innerHTML = `
-            <div style="display: flex; align-items: center; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 10px; padding: 10px 20px; margin: 10px;">
                 <i class="fas fa-exclamation-triangle"></i>
                 <div style="flex: 1;">
                     <strong>${item.name}</strong> - Low stock: ${stockDisplay} ${item.unit} remaining<br>
@@ -1675,7 +1676,7 @@ function clearCompletedOrders() {
 }
 
 // =============================================
-// CHART FUNCTIONS - UPDATED WITH REAL-TIME DATA
+// CHART FUNCTIONS - UPDATED WITH 8AM-9PM TIMEFRAME
 // =============================================
 
 function updateCharts() {
@@ -1711,9 +1712,18 @@ function updateHourlyChart() {
     const yesterdayStr = yesterday.toLocaleDateString();
     
     let filteredSales = [];
-    const hourlyData = [0, 0, 0, 0, 0, 0, 0]; // 11 AM to 5 PM (7 hours)
-    const hourLabels = ['11 AM', '12 PM', '1 PM', '2 PM', '3 PM', '4 PM', '5 PM'];
-    const hourValues = [11, 12, 13, 14, 15, 16, 17]; // 24-hour format
+    
+    // Create hour labels from 8 AM to 9 PM (14 hours)
+    const hourLabels = [];
+    const hourValues = [];
+    for (let hour = 8; hour <= 21; hour++) {
+        const hourStr = hour <= 11 ? `${hour} AM` : hour === 12 ? `12 PM` : hour > 12 ? `${hour-12} PM` : `${hour} AM`;
+        hourLabels.push(hourStr);
+        hourValues.push(hour);
+    }
+    
+    // Initialize hourly data array with zeros
+    const hourlyData = new Array(hourValues.length).fill(0);
     
     if (period === 'today') {
         // Filter for today's sales
@@ -1727,7 +1737,7 @@ function updateHourlyChart() {
     filteredSales.forEach(sale => {
         const saleHour = sale.hour || new Date(sale.timestamp).getHours();
         
-        // Find which hour bucket this belongs to
+        // Find which hour bucket this belongs to (only include hours between 8 AM and 9 PM)
         for (let i = 0; i < hourValues.length; i++) {
             if (saleHour === hourValues[i]) {
                 hourlyData[i] += sale.total;
@@ -1793,6 +1803,12 @@ function updateHourlyChart() {
                         callback: function(value) {
                             return '$' + value;
                         }
+                    }
+                },
+                x: {
+                    ticks: {
+                        maxRotation: 45,
+                        minRotation: 45
                     }
                 }
             }
