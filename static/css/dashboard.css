@@ -155,18 +155,6 @@ body {
     margin-bottom: 15px;
 }
 
-.demo-hint {
-    text-align: center;
-    color: #7f8c8d;
-    font-size: 14px;
-    padding-top: 15px;
-    border-top: 1px solid #e9ecef;
-}
-
-.demo-hint p {
-    margin: 5px 0;
-}
-
 /* Dashboard */
 .dashboard {
     height: 100vh;
