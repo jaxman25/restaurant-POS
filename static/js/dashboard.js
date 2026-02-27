@@ -1,5 +1,5 @@
 // =============================================
-// RESTAURANT POS DASHBOARD WITH PAYMENT PROCESSING
+// RESTAURANT POS SYSTEM WITH MULTI-USER MANAGEMENT
 // =============================================
 
 // Global state
@@ -13,6 +13,8 @@ let inventoryItems = [];
 let currentPaymentMethod = 'cash';
 let tipAmount = 0;
 let inventoryTransactions = [];
+let itemToDelete = null;
+let deleteCallback = null;
 
 // Chart instances
 let hourlyChart = null;
@@ -25,70 +27,179 @@ let categoryChart = null;
 document.addEventListener('DOMContentLoaded', () => {
     console.log('DOM loaded, initializing app...');
     
-    checkAuth();
+    // Check if system has been set up
+    const users = JSON.parse(localStorage.getItem('users') || '[]');
+    
+    if (users.length === 0) {
+        // Show startup screen
+        document.getElementById('startup-screen').style.display = 'flex';
+        document.getElementById('login-screen').style.display = 'none';
+        document.getElementById('dashboard').style.display = 'none';
+    } else {
+        // Show login screen
+        document.getElementById('startup-screen').style.display = 'none';
+        document.getElementById('login-screen').style.display = 'flex';
+        document.getElementById('dashboard').style.display = 'none';
+        
+        // Load ALL restaurant info for login screen
+        loadRestaurantInfo();
+    }
+    
     updateDateTime();
     setInterval(updateDateTime, 1000);
-    
-    // Initialize all data - NO DEMO DATA, just load what exists
-    loadInventory();
-    loadSavedKitchenOrders();
-    loadInventoryTransactions();
-    
-    // Update displays after a short delay
-    setTimeout(() => {
-        loadMenuItems();
-        
-        // Update dashboard metrics from sales data
-        updateDashboardMetrics();
-        
-        // Only update charts if there's data
-        const salesData = JSON.parse(localStorage.getItem('dailySales') || '[]');
-        if (salesData.length > 0) {
-            updateCharts();
-            updateTopItems();
-        }
-        
-        updateLowStockAlerts();
-        renderKitchenOrders();
-        
-        console.log('Initialization complete');
-    }, 500);
 });
 
-function checkAuth() {
-    showLoginScreen();
+// =============================================
+// SETUP FUNCTIONS
+// =============================================
+
+let currentStep = 1;
+let setupOption = 'empty';
+
+function nextStep() {
+    if (currentStep === 1) {
+        // Validate step 1
+        const name = document.getElementById('admin-full-name').value.trim();
+        const pin = document.getElementById('admin-pin').value;
+        const confirmPin = document.getElementById('admin-confirm-pin').value;
+        
+        if (!name) {
+            showNotification('Please enter admin name', 'error');
+            return;
+        }
+        
+        if (!pin || pin.length !== 4) {
+            showNotification('Please enter a 4-digit PIN', 'error');
+            return;
+        }
+        
+        if (pin !== confirmPin) {
+            showNotification('PINs do not match', 'error');
+            return;
+        }
+        
+        // Update summary
+        document.getElementById('summary-admin').textContent = name;
+    }
+    
+    if (currentStep === 2) {
+        // Validate step 2
+        const restaurantName = document.getElementById('restaurant-name').value.trim();
+        if (!restaurantName) {
+            showNotification('Please enter restaurant name', 'error');
+            return;
+        }
+        
+        // Update summary
+        document.getElementById('summary-restaurant').textContent = restaurantName;
+        document.getElementById('summary-tax').textContent = document.getElementById('restaurant-tax-rate').value + '%';
+    }
+    
+    // Update progress
+    document.getElementById(`step${currentStep}`).classList.remove('active');
+    document.getElementById(`step${currentStep}-indicator`).classList.remove('active');
+    
+    currentStep++;
+    
+    document.getElementById(`step${currentStep}`).classList.add('active');
+    document.getElementById(`step${currentStep}-indicator`).classList.add('active');
+}
+
+function prevStep() {
+    currentStep--;
+    
+    document.getElementById(`step${currentStep + 1}`).classList.remove('active');
+    document.getElementById(`step${currentStep + 1}-indicator`).classList.remove('active');
+    
+    document.getElementById(`step${currentStep}`).classList.add('active');
+    document.getElementById(`step${currentStep}-indicator`).classList.add('active');
+}
+
+function selectSetupOption(option) {
+    setupOption = option;
+    
+    // Update UI
+    document.querySelectorAll('.setup-option-card').forEach(card => {
+        card.classList.remove('selected');
+    });
+    document.getElementById(`option-${option}`).classList.add('selected');
+    
+    // Update summary
+    const optionLabels = {
+        'empty': 'Start Fresh',
+        'demo': 'Load Demo Data',
+        'minimal': 'Minimal Setup'
+    };
+    document.getElementById('summary-option').textContent = optionLabels[option];
+}
+
+function completeSetup() {
+    // Create admin user with ALL permissions including manageUsers
+    const adminName = document.getElementById('admin-full-name').value.trim();
+    const adminPin = document.getElementById('admin-pin').value;
+    const adminEmail = document.getElementById('admin-email').value;
+    
+    const adminUser = {
+        id: 1,
+        name: adminName,
+        pin: adminPin,
+        email: adminEmail,
+        role: 'admin',
+        permissions: {
+            pos: true,
+            kitchen: true,
+            inventory: true,
+            reports: true,
+            settings: true,
+            manageUsers: true
+        },
+        createdAt: new Date().toISOString()
+    };
+    
+    localStorage.setItem('users', JSON.stringify([adminUser]));
+    
+    // Save restaurant info
+    const restaurantInfo = {
+        name: document.getElementById('restaurant-name').value.trim(),
+        address: document.getElementById('restaurant-address').value.trim(),
+        city: document.getElementById('restaurant-city').value.trim(),
+        state: document.getElementById('restaurant-state').value.trim(),
+        zip: document.getElementById('restaurant-zip').value.trim(),
+        phone: document.getElementById('restaurant-phone').value.trim(),
+        taxRate: parseFloat(document.getElementById('restaurant-tax-rate').value),
+        logo: null
+    };
+    
+    localStorage.setItem('restaurantInfo', JSON.stringify(restaurantInfo));
+    
+    // Setup based on option
+    if (setupOption === 'demo') {
+        loadDemoData();
+    } else if (setupOption === 'minimal') {
+        loadMinimalData();
+    }
+    
+    // Show login screen
+    document.getElementById('startup-screen').style.display = 'none';
+    document.getElementById('login-screen').style.display = 'flex';
+    document.getElementById('login-restaurant-name').textContent = restaurantInfo.name;
+    
+    showNotification('Setup complete! Please login with your PIN', 'success');
+}
+
+function loadDemoData() {
+    // This function intentionally left empty - no demo data
+    console.log('Demo data option selected but no data loaded');
+}
+
+function loadMinimalData() {
+    // This function intentionally left empty - no demo data
+    console.log('Minimal data option selected but no data loaded');
 }
 
 // =============================================
 // LOGIN FUNCTIONS
-//==============================================
-
-function showLoginScreen() {
-    document.getElementById('login-screen').style.display = 'flex';
-    document.getElementById('dashboard').style.display = 'none';
-}
-
-function showDashboard() {
-    document.getElementById('login-screen').style.display = 'none';
-    document.getElementById('dashboard').style.display = 'block';
-}
-
-function applyPermissions() {
-    const inventoryNav = document.getElementById('inventory-nav');
-    if (inventoryNav) {
-        inventoryNav.style.display = currentUser.permissions.inventory ? 'flex' : 'none';
-    }
-    
-    const reportsNav = document.getElementById('reports-nav');
-    if (reportsNav) {
-        reportsNav.style.display = currentUser.permissions.reports ? 'flex' : 'none';
-    }
-    
-    const clearBtn = document.getElementById('clear-completed-btn');
-    if (clearBtn) {
-        clearBtn.style.display = (currentUser.permissions.staff || currentUser.permissions.reports) ? 'inline-flex' : 'none';
-    }
-}
+// =============================================
 
 function addPin(digit) {
     if (currentPin.length < 4) {
@@ -109,88 +220,717 @@ function deletePin() {
 
 function login() {
     if (currentPin.length !== 4) {
-        showError('Please enter 4-digit PIN');
+        showNotification('Please enter 4-digit PIN', 'error');
         return;
     }
     
-    const demoUsers = {
-        '1234': { 
-            id: 1, 
-            name: 'Admin User', 
-            role: 'admin', 
-            permissions: { pos: true, inventory: true, reports: true, staff: true, settings: true } 
-        },
-        '1111': { 
-            id: 2, 
-            name: 'John Manager', 
-            role: 'manager', 
-            permissions: { pos: true, inventory: true, reports: true, staff: false, settings: false } 
-        },
-        '2222': { 
-            id: 3, 
-            name: 'Sarah Staff', 
-            role: 'staff', 
-            permissions: { pos: true, inventory: false, reports: false, staff: false, settings: false } 
-        },
-        '3333': { 
-            id: 4, 
-            name: 'Mike Cook', 
-            role: 'cook', 
-            permissions: { pos: true, inventory: false, reports: false, staff: false, settings: false } 
-        }
-    };
+    const users = JSON.parse(localStorage.getItem('users') || '[]');
+    const user = users.find(u => u.pin === currentPin);
     
-    if (demoUsers[currentPin]) {
-        currentUser = demoUsers[currentPin];
+    if (user) {
+        currentUser = user;
         
-        document.getElementById('staff-name').textContent = currentUser.name;
-        document.getElementById('staff-role').textContent = currentUser.role;
-        document.getElementById('current-staff-name').textContent = currentUser.name;
+        document.getElementById('staff-name').textContent = user.name;
+        document.getElementById('staff-role').textContent = user.role;
+        document.getElementById('current-staff-name').textContent = user.name;
         
+        // Apply permissions
         applyPermissions();
-        showDashboard();
+        
+        // Load ALL restaurant info (name AND logo)
+        loadRestaurantInfo();
+        
+        // Load dashboard
+        document.getElementById('login-screen').style.display = 'none';
+        document.getElementById('dashboard').style.display = 'block';
+        
+        // Load all data
         loadAllData();
+        
         clearPin();
-        showNotification(`Welcome, ${currentUser.name}!`, 'success');
+        showNotification(`Welcome, ${user.name}!`, 'success');
     } else {
-        showError('Invalid PIN');
+        showNotification('Invalid PIN', 'error');
         clearPin();
     }
-}
-
-function showError(message) {
-    document.getElementById('login-error').textContent = message;
 }
 
 function logout() {
     currentUser = null;
-    showLoginScreen();
-    clearPin();
     cart = [];
-    renderCart();
-}
-
-function hasPermission(permission) {
-    return currentUser && currentUser.permissions && currentUser.permissions[permission];
+    document.getElementById('login-screen').style.display = 'flex';
+    document.getElementById('dashboard').style.display = 'none';
+    clearPin();
+    
+    // Reset logo to default icon on logout
+    document.getElementById('sidebar-logo').innerHTML = '<i class="fas fa-utensils"></i>';
+    const loginLogo = document.querySelector('.login-logo');
+    if (loginLogo) {
+        loginLogo.innerHTML = '<i class="fas fa-utensils"></i>';
+    }
 }
 
 // =============================================
-// DATA LOADING
+// PERMISSIONS MANAGEMENT
+// =============================================
+
+function applyPermissions() {
+    if (!currentUser) return;
+    
+    const perms = currentUser.permissions;
+    
+    // Show/hide navigation items based on permissions
+    document.getElementById('nav-inventory').style.display = perms.inventory ? 'flex' : 'none';
+    document.getElementById('nav-reports').style.display = perms.reports ? 'flex' : 'none';
+    
+    // Settings nav - show if user has settings OR manageUsers OR is admin
+    const showSettings = perms.settings || perms.manageUsers || currentUser.role === 'admin';
+    document.getElementById('nav-settings').style.display = showSettings ? 'flex' : 'none';
+    
+    // Kitchen nav - show for kitchen permission or cook role
+    if (currentUser.role === 'cook' || perms.kitchen) {
+        document.getElementById('nav-kitchen').style.display = 'flex';
+    } else {
+        document.getElementById('nav-kitchen').style.display = 'none';
+    }
+    
+    // POS nav - show for pos permission
+    document.getElementById('nav-pos').style.display = perms.pos ? 'flex' : 'none';
+    
+    // Overview nav - always show but hide for cook
+    if (currentUser.role === 'cook') {
+        document.getElementById('nav-overview').style.display = 'none';
+    } else {
+        document.getElementById('nav-overview').style.display = 'flex';
+    }
+    
+    // Show/hide inventory actions
+    if (perms.inventory) {
+        const inventoryActions = document.getElementById('inventory-actions');
+        if (inventoryActions) inventoryActions.style.display = 'flex';
+        
+        const inventoryActionsHeader = document.getElementById('inventory-actions-header');
+        if (inventoryActionsHeader) inventoryActionsHeader.style.display = 'table-cell';
+    }
+    
+    // Show/hide report controls
+    if (perms.reports) {
+        const reportControls = document.getElementById('report-controls');
+        if (reportControls) reportControls.style.display = 'flex';
+    }
+    
+    // Show/hide clear completed button for managers/admins
+    if (perms.reports || perms.settings || currentUser.role === 'admin') {
+        const clearBtn = document.getElementById('clear-completed-btn');
+        if (clearBtn) clearBtn.style.display = 'inline-flex';
+    }
+}
+
+function hasPermission(permission) {
+    if (!currentUser || !currentUser.permissions) return false;
+    
+    // Admin always has all permissions
+    if (currentUser.role === 'admin') return true;
+    
+    return currentUser.permissions[permission] === true;
+}
+
+// =============================================
+// USER MANAGEMENT FUNCTIONS
+// =============================================
+
+function openUserManagement() {
+    // Check if user has manageUsers permission OR is admin
+    if (!hasPermission('manageUsers') && currentUser.role !== 'admin') {
+        showNotification('Only admins can manage users', 'error');
+        return;
+    }
+    
+    loadUsersList();
+    document.getElementById('user-management-modal').style.display = 'flex';
+}
+
+function closeUserManagementModal() {
+    document.getElementById('user-management-modal').style.display = 'none';
+    clearUserForm();
+}
+
+function updateRolePreview() {
+    const role = document.getElementById('new-user-role').value;
+    const preview = document.getElementById('role-permissions');
+    
+    let badges = '';
+    if (role === 'admin') {
+        badges = '<span class="permission-badge admin">👑 Admin (Full Access including User Management)</span>';
+    } else if (role === 'manager') {
+        badges = '<span class="permission-badge pos">🛒 POS</span><span class="permission-badge kitchen">👨‍🍳 Kitchen</span><span class="permission-badge inventory">📦 Inventory</span><span class="permission-badge reports">📊 Reports</span>';
+    } else if (role === 'cook') {
+        badges = '<span class="permission-badge kitchen">👨‍🍳 Kitchen Only</span>';
+    } else {
+        badges = '<span class="permission-badge pos">🛒 POS Only</span>';
+    }
+    
+    preview.innerHTML = badges;
+}
+
+function loadUsersList() {
+    const users = JSON.parse(localStorage.getItem('users') || '[]');
+    const list = document.getElementById('users-list');
+    
+    let html = '';
+    users.forEach(user => {
+        html += '<div class="user-item">';
+        html += '<div class="user-item-info">';
+        html += '<div class="user-item-name">' + user.name + '</div>';
+        html += '<div class="user-item-details">';
+        html += '<span class="user-item-pin">PIN: ' + user.pin + '</span>';
+        html += '<span class="user-item-role">' + user.role + '</span>';
+        html += '</div>';
+        html += '</div>';
+        html += '<div class="user-item-actions">';
+        html += '<button class="btn-sm btn-primary" onclick="editUser(' + user.id + ')"><i class="fas fa-edit"></i></button>';
+        if (user.id !== 1) {
+            html += '<button class="btn-sm btn-danger" onclick="deleteUser(' + user.id + ')"><i class="fas fa-trash"></i></button>';
+        } else {
+            html += '<span class="badge-success" style="padding:5px;">Primary Admin</span>';
+        }
+        html += '</div>';
+        html += '</div>';
+    });
+    
+    list.innerHTML = html;
+}
+
+function addNewUser() {
+    const name = document.getElementById('new-user-name').value.trim();
+    const pin = document.getElementById('new-user-pin').value;
+    const role = document.getElementById('new-user-role').value;
+    
+    if (!name) {
+        showNotification('Please enter user name', 'error');
+        return;
+    }
+    
+    if (!pin || pin.length !== 4) {
+        showNotification('Please enter a 4-digit PIN', 'error');
+        return;
+    }
+    
+    const users = JSON.parse(localStorage.getItem('users') || '[]');
+    
+    // Check if PIN already exists
+    if (users.some(u => u.pin === pin)) {
+        showNotification('PIN already exists', 'error');
+        return;
+    }
+    
+    const permissions = getPermissionsForRole(role);
+    
+    const newUser = {
+        id: Date.now(),
+        name: name,
+        pin: pin,
+        role: role,
+        permissions: permissions,
+        createdAt: new Date().toISOString()
+    };
+    
+    users.push(newUser);
+    localStorage.setItem('users', JSON.stringify(users));
+    
+    loadUsersList();
+    clearUserForm();
+    showNotification(`User ${name} added successfully`, 'success');
+}
+
+function getPermissionsForRole(role) {
+    switch(role) {
+        case 'admin':
+            return {
+                pos: true,
+                kitchen: true,
+                inventory: true,
+                reports: true,
+                settings: true,
+                manageUsers: true
+            };
+        case 'manager':
+            return {
+                pos: true,
+                kitchen: true,
+                inventory: true,
+                reports: true,
+                settings: false,
+                manageUsers: false
+            };
+        case 'cook':
+            return {
+                pos: false,
+                kitchen: true,
+                inventory: false,
+                reports: false,
+                settings: false,
+                manageUsers: false
+            };
+        default: // staff
+            return {
+                pos: true,
+                kitchen: false,
+                inventory: false,
+                reports: false,
+                settings: false,
+                manageUsers: false
+            };
+    }
+}
+
+function editUser(userId) {
+    const users = JSON.parse(localStorage.getItem('users') || '[]');
+    const user = users.find(u => u.id === userId);
+    
+    if (!user) return;
+    
+    document.getElementById('edit-user-id').value = user.id;
+    document.getElementById('edit-user-name').value = user.name;
+    document.getElementById('edit-user-pin').value = '';
+    document.getElementById('edit-user-role').value = user.role;
+    
+    closeUserManagementModal();
+    document.getElementById('edit-user-modal').style.display = 'flex';
+}
+
+function closeEditUserModal() {
+    document.getElementById('edit-user-modal').style.display = 'none';
+}
+
+function saveUserChanges() {
+    const userId = parseInt(document.getElementById('edit-user-id').value);
+    const name = document.getElementById('edit-user-name').value.trim();
+    const pin = document.getElementById('edit-user-pin').value;
+    const role = document.getElementById('edit-user-role').value;
+    
+    if (!name) {
+        showNotification('Please enter user name', 'error');
+        return;
+    }
+    
+    const users = JSON.parse(localStorage.getItem('users') || '[]');
+    const userIndex = users.findIndex(u => u.id === userId);
+    
+    if (userIndex === -1) return;
+    
+    // Check if new PIN already exists (if changed)
+    if (pin) {
+        if (pin.length !== 4) {
+            showNotification('PIN must be 4 digits', 'error');
+            return;
+        }
+        if (users.some((u, i) => i !== userIndex && u.pin === pin)) {
+            showNotification('PIN already exists', 'error');
+            return;
+        }
+        users[userIndex].pin = pin;
+    }
+    
+    users[userIndex].name = name;
+    users[userIndex].role = role;
+    users[userIndex].permissions = getPermissionsForRole(role);
+    
+    localStorage.setItem('users', JSON.stringify(users));
+    
+    closeEditUserModal();
+    openUserManagement();
+    showNotification('User updated successfully', 'success');
+}
+
+function deleteUser(userId) {
+    itemToDelete = userId;
+    deleteCallback = confirmDeleteUser;
+    document.getElementById('delete-message').textContent = 'Are you sure you want to delete this user?';
+    document.getElementById('delete-confirm-modal').style.display = 'flex';
+}
+
+function confirmDeleteUser() {
+    const users = JSON.parse(localStorage.getItem('users') || '[]');
+    const updatedUsers = users.filter(u => u.id !== itemToDelete);
+    localStorage.setItem('users', JSON.stringify(updatedUsers));
+    
+    loadUsersList();
+    showNotification('User deleted successfully', 'success');
+}
+
+function clearUserForm() {
+    document.getElementById('new-user-name').value = '';
+    document.getElementById('new-user-pin').value = '';
+    document.getElementById('new-user-role').value = 'staff';
+    updateRolePreview();
+}
+
+// =============================================
+// RESTAURANT SETTINGS FUNCTIONS
+// =============================================
+
+function openRestaurantSettings() {
+    if (!hasPermission('settings') && currentUser.role !== 'admin') {
+        showNotification('Access denied', 'error');
+        return;
+    }
+    
+    const info = JSON.parse(localStorage.getItem('restaurantInfo') || '{}');
+    
+    document.getElementById('settings-restaurant-name').value = info.name || '';
+    document.getElementById('settings-restaurant-address').value = info.address || '';
+    document.getElementById('settings-restaurant-city').value = info.city || '';
+    document.getElementById('settings-restaurant-state').value = info.state || '';
+    document.getElementById('settings-restaurant-zip').value = info.zip || '';
+    document.getElementById('settings-restaurant-phone').value = info.phone || '';
+    
+    // Load logo if exists
+    if (info.logo) {
+        document.getElementById('logo-preview').src = info.logo;
+        document.getElementById('logo-preview').style.display = 'block';
+        document.getElementById('logo-placeholder').style.display = 'none';
+        document.getElementById('remove-logo-btn').style.display = 'inline-flex';
+        window.tempLogoData = info.logo;
+    } else {
+        document.getElementById('logo-preview').style.display = 'none';
+        document.getElementById('logo-placeholder').style.display = 'flex';
+        document.getElementById('remove-logo-btn').style.display = 'none';
+        window.tempLogoData = null;
+    }
+    
+    document.getElementById('restaurant-settings-modal').style.display = 'flex';
+}
+
+function closeRestaurantSettingsModal() {
+    document.getElementById('restaurant-settings-modal').style.display = 'none';
+}
+
+function saveRestaurantSettings() {
+    const info = {
+        name: document.getElementById('settings-restaurant-name').value.trim(),
+        address: document.getElementById('settings-restaurant-address').value.trim(),
+        city: document.getElementById('settings-restaurant-city').value.trim(),
+        state: document.getElementById('settings-restaurant-state').value.trim(),
+        zip: document.getElementById('settings-restaurant-zip').value.trim(),
+        phone: document.getElementById('settings-restaurant-phone').value.trim(),
+        taxRate: parseFloat(localStorage.getItem('restaurantInfo') ? JSON.parse(localStorage.getItem('restaurantInfo')).taxRate : 8.5),
+        logo: window.tempLogoData || null
+    };
+    
+    localStorage.setItem('restaurantInfo', JSON.stringify(info));
+    
+    // Update ALL displays
+    document.getElementById('restaurant-name-display').textContent = info.name;
+    document.getElementById('login-restaurant-name').textContent = info.name;
+    
+    // Update logo displays
+    updateLogoDisplay(info.logo);
+    
+    closeRestaurantSettingsModal();
+    showNotification('Restaurant information updated', 'success');
+}
+
+// =============================================
+// LOGO UPLOAD FUNCTIONS
+// =============================================
+
+function handleLogoUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    // Check file size (max 2MB)
+    if (file.size > 2 * 1024 * 1024) {
+        showNotification('Logo image must be less than 2MB', 'error');
+        return;
+    }
+    
+    // Check file type
+    if (!file.type.match('image.*')) {
+        showNotification('Please select an image file', 'error');
+        return;
+    }
+    
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const logoData = e.target.result;
+        
+        // Show preview
+        document.getElementById('logo-preview').src = logoData;
+        document.getElementById('logo-preview').style.display = 'block';
+        document.getElementById('logo-placeholder').style.display = 'none';
+        document.getElementById('remove-logo-btn').style.display = 'inline-flex';
+        
+        // Store temporarily
+        window.tempLogoData = logoData;
+    };
+    reader.readAsDataURL(file);
+}
+
+function removeLogo() {
+    // Hide preview, show placeholder
+    document.getElementById('logo-preview').style.display = 'none';
+    document.getElementById('logo-preview').src = '';
+    document.getElementById('logo-placeholder').style.display = 'flex';
+    document.getElementById('remove-logo-btn').style.display = 'none';
+    
+    // Clear temp data
+    window.tempLogoData = null;
+    
+    // Clear file input
+    document.getElementById('logo-upload').value = '';
+}
+
+function updateLogoDisplay(logoData) {
+    // Update sidebar logo
+    const sidebarLogo = document.getElementById('sidebar-logo');
+    if (sidebarLogo) {
+        if (logoData) {
+            sidebarLogo.innerHTML = '<img src="' + logoData + '" alt="Restaurant Logo" style="width: 100%; height: 100%; object-fit: cover;">';
+        } else {
+            sidebarLogo.innerHTML = '<i class="fas fa-utensils"></i>';
+        }
+    }
+    
+    // Update login screen logo
+    const loginLogo = document.querySelector('.login-logo');
+    if (loginLogo) {
+        if (logoData) {
+            loginLogo.innerHTML = '<img src="' + logoData + '" alt="Restaurant Logo" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">';
+        } else {
+            loginLogo.innerHTML = '<i class="fas fa-utensils"></i>';
+        }
+    }
+}
+
+function loadRestaurantInfo() {
+    const info = JSON.parse(localStorage.getItem('restaurantInfo') || '{}');
+    
+    // Update login screen
+    if (info.name) {
+        document.getElementById('login-restaurant-name').textContent = info.name;
+    }
+    
+    // Update dashboard sidebar if element exists
+    const dashboardNameDisplay = document.getElementById('restaurant-name-display');
+    if (dashboardNameDisplay) {
+        dashboardNameDisplay.textContent = info.name || 'Restaurant POS';
+    }
+    
+    // Update logo if exists
+    if (info.logo) {
+        const loginLogo = document.querySelector('.login-logo');
+        if (loginLogo) {
+            loginLogo.innerHTML = '<img src="' + info.logo + '" alt="Restaurant Logo" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">';
+        }
+        
+        // Update sidebar logo if user is logged in
+        const sidebarLogo = document.getElementById('sidebar-logo');
+        if (sidebarLogo) {
+            sidebarLogo.innerHTML = '<img src="' + info.logo + '" alt="Restaurant Logo" style="width: 100%; height: 100%; object-fit: cover;">';
+        }
+    }
+    
+    // Update tax rate display if needed
+    if (info.taxRate) {
+        const taxDisplay = document.getElementById('tax-rate-display');
+        if (taxDisplay) {
+            taxDisplay.textContent = info.taxRate;
+        }
+    }
+}
+
+function loadRestaurantLogo() {
+    const info = JSON.parse(localStorage.getItem('restaurantInfo') || '{}');
+    if (info.logo) {
+        updateLogoDisplay(info.logo);
+    }
+}
+
+// =============================================
+// MENU MANAGEMENT FUNCTIONS
+// =============================================
+
+function openMenuManagement() {
+    if (!hasPermission('settings') && currentUser.role !== 'admin') {
+        showNotification('Only admins can manage menu', 'error');
+        return;
+    }
+    
+    loadMenuItemsList();
+    document.getElementById('menu-management-modal').style.display = 'flex';
+}
+
+function closeMenuManagementModal() {
+    document.getElementById('menu-management-modal').style.display = 'none';
+}
+
+function loadMenuItemsList() {
+    const items = JSON.parse(localStorage.getItem('menuItems') || '[]');
+    const list = document.getElementById('menu-items-list');
+    
+    if (items.length === 0) {
+        list.innerHTML = '<div class="loading" style="padding: 20px; text-align: center;">No menu items yet. Add your first item above.</div>';
+        return;
+    }
+    
+    let html = '';
+    items.forEach(item => {
+        html += '<div class="menu-item-row">';
+        html += '<div class="menu-item-info">';
+        html += '<span class="menu-item-name">' + item.name + '</span>';
+        html += '<span class="menu-item-category">' + item.category + '</span>';
+        html += '</div>';
+        html += '<div>';
+        html += '<span class="menu-item-price">$' + item.price.toFixed(2) + '</span>';
+        html += '<button class="btn-sm btn-danger" onclick="deleteMenuItem(' + item.id + ')"><i class="fas fa-trash"></i></button>';
+        html += '</div>';
+        html += '</div>';
+    });
+    
+    list.innerHTML = html;
+}
+
+function addMenuItem() {
+    const name = document.getElementById('new-menu-name').value.trim();
+    const price = parseFloat(document.getElementById('new-menu-price').value);
+    const category = document.getElementById('new-menu-category').value;
+    
+    if (!name) {
+        showNotification('Please enter item name', 'error');
+        return;
+    }
+    
+    if (isNaN(price) || price <= 0) {
+        showNotification('Please enter a valid price', 'error');
+        return;
+    }
+    
+    let menuItems = JSON.parse(localStorage.getItem('menuItems') || '[]');
+    
+    const newId = menuItems.length > 0 ? Math.max(...menuItems.map(i => i.id)) + 1 : 1;
+    
+    const newItem = {
+        id: newId,
+        name: name,
+        price: price,
+        category: category
+    };
+    
+    menuItems.push(newItem);
+    localStorage.setItem('menuItems', JSON.stringify(menuItems));
+    
+    // Clear form
+    document.getElementById('new-menu-name').value = '';
+    document.getElementById('new-menu-price').value = '';
+    
+    // Refresh both management list and POS menu
+    loadMenuItemsList();
+    loadMenuItems();
+    
+    showNotification(`Added ${name} to menu`, 'success');
+}
+
+function deleteMenuItem(itemId) {
+    itemToDelete = itemId;
+    deleteCallback = confirmDeleteMenuItem;
+    document.getElementById('delete-message').textContent = 'Are you sure you want to delete this menu item?';
+    document.getElementById('delete-confirm-modal').style.display = 'flex';
+}
+
+function confirmDeleteMenuItem() {
+    let menuItems = JSON.parse(localStorage.getItem('menuItems') || '[]');
+    const deletedItem = menuItems.find(i => i.id === itemToDelete);
+    menuItems = menuItems.filter(i => i.id !== itemToDelete);
+    localStorage.setItem('menuItems', JSON.stringify(menuItems));
+    
+    // Refresh both management list and POS menu
+    loadMenuItemsList();
+    loadMenuItems();
+    
+    showNotification(`Deleted ${deletedItem ? deletedItem.name : 'item'} from menu`, 'success');
+}
+
+// =============================================
+// TAX SETTINGS FUNCTIONS
+// =============================================
+
+function openTaxSettings() {
+    if (!hasPermission('settings') && currentUser.role !== 'admin') {
+        showNotification('Access denied', 'error');
+        return;
+    }
+    
+    const info = JSON.parse(localStorage.getItem('restaurantInfo') || '{}');
+    document.getElementById('tax-rate').value = info.taxRate || 8.5;
+    document.getElementById('tax-settings-modal').style.display = 'flex';
+}
+
+function closeTaxSettingsModal() {
+    document.getElementById('tax-settings-modal').style.display = 'none';
+}
+
+function saveTaxSettings() {
+    const taxRate = parseFloat(document.getElementById('tax-rate').value);
+    
+    const info = JSON.parse(localStorage.getItem('restaurantInfo') || '{}');
+    info.taxRate = taxRate;
+    localStorage.setItem('restaurantInfo', JSON.stringify(info));
+    
+    document.getElementById('tax-rate-display').textContent = taxRate;
+    
+    closeTaxSettingsModal();
+    showNotification('Tax rate updated', 'success');
+}
+
+// =============================================
+// DATA EXPORT FUNCTIONS
+// =============================================
+
+function exportAllData() {
+    if (!hasPermission('settings') && currentUser.role !== 'admin') {
+        showNotification('Access denied', 'error');
+        return;
+    }
+    
+    const data = {
+        users: JSON.parse(localStorage.getItem('users') || '[]'),
+        restaurantInfo: JSON.parse(localStorage.getItem('restaurantInfo') || '{}'),
+        menuItems: JSON.parse(localStorage.getItem('menuItems') || '[]'),
+        inventoryItems: JSON.parse(localStorage.getItem('inventoryItems') || '[]'),
+        kitchenOrders: JSON.parse(localStorage.getItem('kitchenOrders') || '[]'),
+        dailySales: JSON.parse(localStorage.getItem('dailySales') || '[]'),
+        exportDate: new Date().toISOString()
+    };
+    
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `pos-backup-${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    
+    showNotification('Data exported successfully', 'success');
+}
+
+// =============================================
+// DATA LOADING FUNCTIONS
 // =============================================
 
 function loadAllData() {
     loadMenuItems();
-    renderKitchenOrders();
     loadInventory();
-    
-    // Update dashboard metrics from sales data
+    loadSavedKitchenOrders();
     updateDashboardMetrics();
     
-    // Only update charts if there's data
     const salesData = JSON.parse(localStorage.getItem('dailySales') || '[]');
     if (salesData.length > 0) {
         updateCharts();
         updateTopItems();
+    } else {
+        // Show empty state for charts
+        document.getElementById('hourlyChart').style.display = 'none';
+        document.getElementById('categoryChart').style.display = 'none';
     }
     
     updateLowStockAlerts();
@@ -203,12 +943,8 @@ function loadAllData() {
 function refreshData() {
     loadInventory();
     loadSavedKitchenOrders();
-    renderKitchenOrders();
-    
-    // Update dashboard metrics from sales data
     updateDashboardMetrics();
     
-    // Only update charts if there's data
     const salesData = JSON.parse(localStorage.getItem('dailySales') || '[]');
     if (salesData.length > 0) {
         updateTopItems();
@@ -224,12 +960,25 @@ function refreshData() {
 // =============================================
 
 function switchTab(tabName) {
+    // Check permissions
     if (tabName === 'inventory' && !hasPermission('inventory')) {
-        showNotification('You don\'t have permission to view inventory', 'error');
+        showNotification('Access denied', 'error');
         return;
     }
     if (tabName === 'reports' && !hasPermission('reports')) {
-        showNotification('You don\'t have permission to view reports', 'error');
+        showNotification('Access denied', 'error');
+        return;
+    }
+    if (tabName === 'settings' && !hasPermission('settings') && currentUser.role !== 'admin') {
+        showNotification('Access denied', 'error');
+        return;
+    }
+    if (tabName === 'kitchen' && !hasPermission('kitchen') && currentUser.role !== 'cook') {
+        showNotification('Access denied', 'error');
+        return;
+    }
+    if (tabName === 'pos' && !hasPermission('pos')) {
+        showNotification('Access denied', 'error');
         return;
     }
     
@@ -248,10 +997,12 @@ function switchTab(tabName) {
         'pos': 'Point of Sale',
         'kitchen': 'Kitchen Display',
         'inventory': 'Inventory Management',
-        'reports': 'Sales Reports'
+        'reports': 'Sales Reports',
+        'settings': 'System Settings'
     };
     document.getElementById('page-title').textContent = titles[tabName];
     
+    // Load tab-specific data
     if (tabName === 'inventory') {
         loadInventory();
     }
@@ -266,7 +1017,6 @@ function switchTab(tabName) {
                 updateCharts();
                 updateTopItems();
             } else {
-                // Show empty state
                 document.getElementById('hourlyChart').style.display = 'none';
                 document.getElementById('categoryChart').style.display = 'none';
                 document.getElementById('top-items-body').innerHTML = '<tr><td colspan="3" class="loading">No sales data yet. Complete a sale to see charts.</td></tr>';
@@ -280,25 +1030,13 @@ function switchTab(tabName) {
 }
 
 // =============================================
-// MENU FUNCTIONS
+// MENU FUNCTIONS - FOR POS DISPLAY
 // =============================================
 
 function loadMenuItems() {
-    menuItems = getMockMenuItems();
+    const saved = localStorage.getItem('menuItems');
+    menuItems = saved ? JSON.parse(saved) : [];
     filterMenu('all');
-}
-
-function getMockMenuItems() {
-    return [
-        { id: 1, name: 'Classic Burger', price: 12.99, category: 'Mains' },
-        { id: 2, name: 'Cheeseburger', price: 13.99, category: 'Mains' },
-        { id: 3, name: 'French Fries', price: 4.99, category: 'Sides' },
-        { id: 4, name: 'Chicken Wings', price: 10.99, category: 'Appetizers' },
-        { id: 5, name: 'Soda', price: 1.99, category: 'Drinks' },
-        { id: 6, name: 'Ice Cream', price: 3.99, category: 'Desserts' },
-        { id: 7, name: 'Caesar Salad', price: 8.99, category: 'Appetizers' },
-        { id: 8, name: 'Steak', price: 24.99, category: 'Mains' }
-    ];
 }
 
 function filterMenu(category) {
@@ -310,12 +1048,6 @@ function filterMenu(category) {
     
     if (event && event.currentTarget) {
         event.currentTarget.classList.add('active');
-    } else {
-        document.querySelectorAll('.category-btn').forEach(btn => {
-            if (btn.textContent.includes('All')) {
-                btn.classList.add('active');
-            }
-        });
     }
     
     renderMenu();
@@ -344,16 +1076,19 @@ function renderMenu() {
     }
     
     if (filtered.length === 0) {
-        grid.innerHTML = '<div class="loading">No items found</div>';
+        grid.innerHTML = '<div class="loading">No menu items found. Add items in Settings > Menu Management.</div>';
         return;
     }
     
-    grid.innerHTML = filtered.map(item => `
-        <div class="menu-item" onclick="addToCart(${item.id})">
-            <div class="menu-item-name">${item.name}</div>
-            <div class="price">$${item.price.toFixed(2)}</div>
-        </div>
-    `).join('');
+    let html = '';
+    filtered.forEach(item => {
+        html += '<div class="menu-item" onclick="addToCart(' + item.id + ')">';
+        html += '<div class="menu-item-name">' + item.name + '</div>';
+        html += '<div class="price">$' + item.price.toFixed(2) + '</div>';
+        html += '</div>';
+    });
+    
+    grid.innerHTML = html;
 }
 
 // =============================================
@@ -380,7 +1115,7 @@ function renderCart() {
         return;
     }
     
-    // Group identical items to show quantities
+    // Group identical items
     const itemMap = new Map();
     cart.forEach(item => {
         const key = `${item.id}-${item.name}`;
@@ -398,20 +1133,16 @@ function renderCart() {
     const groupedCart = Array.from(itemMap.values());
     
     let html = '';
-    groupedCart.forEach((item, index) => {
-        html += `
-            <div class="cart-item">
-                <div class="cart-item-info">
-                    <div class="cart-item-name">${item.name} ${item.quantity > 1 ? `(x${item.quantity})` : ''}</div>
-                </div>
-                <div class="cart-item-price">$${(item.price * item.quantity).toFixed(2)}</div>
-                <div class="cart-item-actions">
-                    <button onclick="removeFromCartByItemId(${item.id})" aria-label="Remove item">
-                        <i class="fas fa-trash"></i>
-                    </button>
-                </div>
-            </div>
-        `;
+    groupedCart.forEach(item => {
+        html += '<div class="cart-item">';
+        html += '<div class="cart-item-info">';
+        html += '<div class="cart-item-name">' + item.name + (item.quantity > 1 ? ' (x' + item.quantity + ')' : '') + '</div>';
+        html += '</div>';
+        html += '<div class="cart-item-price">$' + (item.price * item.quantity).toFixed(2) + '</div>';
+        html += '<div class="cart-item-actions">';
+        html += '<button onclick="removeFromCartByItemId(' + item.id + ')"><i class="fas fa-trash"></i></button>';
+        html += '</div>';
+        html += '</div>';
     });
     
     cartDiv.innerHTML = html;
@@ -419,7 +1150,6 @@ function renderCart() {
 }
 
 function removeFromCartByItemId(itemId) {
-    // Find the last occurrence of this item in cart and remove it
     for (let i = cart.length - 1; i >= 0; i--) {
         if (cart[i].id === itemId) {
             cart.splice(i, 1);
@@ -438,58 +1168,26 @@ function clearCart() {
 
 function updateCartTotals() {
     const subtotal = cart.reduce((sum, item) => sum + item.price, 0);
-    const tax = subtotal * 0.085;
+    const info = JSON.parse(localStorage.getItem('restaurantInfo') || '{}');
+    const taxRate = info.taxRate || 8.5;
+    const tax = subtotal * (taxRate / 100);
     const total = subtotal + tax;
     
     document.getElementById('cart-subtotal').textContent = `$${subtotal.toFixed(2)}`;
     document.getElementById('cart-tax').textContent = `$${tax.toFixed(2)}`;
     document.getElementById('cart-total').textContent = `$${total.toFixed(2)}`;
+    document.getElementById('tax-rate-display').textContent = taxRate;
 }
 
 // =============================================
-// INVENTORY FUNCTIONS - UPDATED WITH REAL-TIME UPDATES
+// INVENTORY FUNCTIONS - WITH WARNINGS AND SUGGESTIONS
 // =============================================
-
-// DEMO DATA FUNCTION REMOVED - Now starts empty
 
 function loadInventory() {
     const saved = localStorage.getItem('inventoryItems');
-    
-    if (saved) {
-        try {
-            inventoryItems = JSON.parse(saved);
-        } catch (e) {
-            inventoryItems = []; // Start with empty array if error
-            console.error('Failed to parse inventory data', e);
-        }
-    } else {
-        inventoryItems = []; // Start with empty array
-    }
-    
+    inventoryItems = saved ? JSON.parse(saved) : [];
     renderInventory(inventoryItems);
     populateInventoryDropdown();
-}
-
-function loadInventoryTransactions() {
-    const saved = localStorage.getItem('inventoryTransactions');
-    if (saved) {
-        try {
-            inventoryTransactions = JSON.parse(saved);
-        } catch (e) {
-            inventoryTransactions = [];
-        }
-    }
-}
-
-function calculateTotalInventoryValue() {
-    if (!inventoryItems || inventoryItems.length === 0) return 0;
-    
-    return inventoryItems.reduce((sum, item) => {
-        // Ensure we're using numbers and handle undefined cost
-        const itemCost = item.cost || 0;
-        const itemStock = item.stock || 0;
-        return sum + (itemStock * itemCost);
-    }, 0);
 }
 
 function renderInventory(items) {
@@ -499,52 +1197,27 @@ function renderInventory(items) {
     if (!items || items.length === 0) {
         tbody.innerHTML = '<tr><td colspan="5" class="loading">No inventory items. Click "Add Item" to get started.</td></tr>';
         
-        // Update stats displays
-        const lowStockCountEl = document.getElementById('low-stock-count');
-        if (lowStockCountEl) {
-            lowStockCountEl.textContent = '0';
-        }
-        
-        const totalValueEl = document.getElementById('total-inventory-value');
-        if (totalValueEl) {
-            totalValueEl.textContent = '$0.00';
-        }
-        
-        // Update inventory badge in navigation
-        const inventoryBadge = document.getElementById('inventory-badge');
-        if (inventoryBadge) {
-            inventoryBadge.textContent = '0';
-            inventoryBadge.style.display = 'none';
-        }
+        document.getElementById('total-inventory-value').textContent = '$0.00';
+        document.getElementById('low-stock-count').textContent = '0';
+        document.getElementById('inventory-badge').textContent = '0';
+        document.getElementById('inventory-badge').style.display = 'none';
         return;
     }
     
-    // Calculate real-time stats
     const lowStock = items.filter(item => item.stock > 0 && item.stock <= item.reorder).length;
     const outOfStock = items.filter(item => item.stock <= 0).length;
     const totalValue = calculateTotalInventoryValue();
     
-    // Update stats displays
-    const lowStockCountEl = document.getElementById('low-stock-count');
-    if (lowStockCountEl) {
-        lowStockCountEl.textContent = lowStock + outOfStock;
-    }
+    document.getElementById('low-stock-count').textContent = lowStock + outOfStock;
+    document.getElementById('total-inventory-value').textContent = `$${totalValue.toFixed(2)}`;
     
-    const totalValueEl = document.getElementById('total-inventory-value');
-    if (totalValueEl) {
-        totalValueEl.textContent = `$${totalValue.toFixed(2)}`;
-    }
+    const alertCount = lowStock + outOfStock;
+    const badge = document.getElementById('inventory-badge');
+    badge.textContent = alertCount;
+    badge.style.display = alertCount > 0 ? 'inline-block' : 'none';
     
-    // Update inventory badge in navigation
-    const inventoryBadge = document.getElementById('inventory-badge');
-    if (inventoryBadge) {
-        const alertCount = lowStock + outOfStock;
-        inventoryBadge.textContent = alertCount;
-        inventoryBadge.style.display = alertCount > 0 ? 'inline-block' : 'none';
-    }
-    
-    // Render table rows
-    tbody.innerHTML = items.map(item => {
+    let html = '';
+    items.forEach(item => {
         let statusClass = 'badge-success';
         let statusText = 'OK';
         
@@ -556,7 +1229,6 @@ function renderInventory(items) {
             statusText = 'Low Stock';
         }
         
-        // Format stock display - show whole numbers for items counted in "each" or "slice", keep decimals for other units
         let stockDisplay = item.stock;
         if (item.unit === 'each' || item.unit === 'slice' || item.unit === 'head') {
             stockDisplay = Math.round(item.stock);
@@ -564,37 +1236,55 @@ function renderInventory(items) {
             stockDisplay = item.stock.toFixed(1);
         }
         
-        return `
-            <tr>
-                <td>${item.name}</td>
-                <td>${stockDisplay}</td>
-                <td>${item.unit}</td>
-                <td><span class="${statusClass}">${statusText}</span></td>
-                <td>
-                    <button class="btn btn-sm btn-primary" onclick="showReceiveStockModal(${item.id})" ${!hasPermission('inventory') ? 'disabled' : ''}>
-                        Receive
-                    </button>
-                </td>
-            </tr>
-        `;
-    }).join('');
+        // Check if this inventory item matches any menu item
+        const matchingMenuItem = menuItems.find(menuItem => 
+            menuItem.name.toLowerCase() === item.name.toLowerCase()
+        );
+        
+        // Add warning icon if out of stock but exists in menu
+        const warningIcon = (item.stock <= 0 && matchingMenuItem) ? 
+            '<span class="warning-icon" title="This item is on the menu but out of stock!">⚠️</span> ' : '';
+        
+        html += '<tr>';
+        html += '<td>' + warningIcon + item.name + '</td>';
+        html += '<td>' + stockDisplay + '</td>';
+        html += '<td>' + item.unit + '</td>';
+        html += '<td><span class="' + statusClass + '">' + statusText + '</span></td>';
+        html += '<td>';
+        
+        if (hasPermission('inventory')) {
+            html += '<div class="action-buttons">';
+            html += '<button class="btn-sm btn-primary" onclick="showReceiveStockModal(' + item.id + ')">Receive</button>';
+            html += '<button class="delete-btn" onclick="showDeleteModal(' + item.id + ')"><i class="fas fa-trash"></i></button>';
+            html += '</div>';
+        } else {
+            html += '-';
+        }
+        
+        html += '</td>';
+        html += '</tr>';
+    });
     
-    // Update low stock alerts
+    tbody.innerHTML = html;
     updateLowStockAlerts();
+}
+
+function calculateTotalInventoryValue() {
+    if (!inventoryItems.length) return 0;
+    return inventoryItems.reduce((sum, item) => sum + ((item.cost || 0) * (item.stock || 0)), 0);
 }
 
 function populateInventoryDropdown() {
     const select = document.getElementById('receive-item');
     if (!select) return;
     
-    if (!inventoryItems || inventoryItems.length === 0) {
+    if (!inventoryItems.length) {
         select.innerHTML = '<option value="">No items available</option>';
         return;
     }
     
     let options = '<option value="">-- Select Item --</option>';
     inventoryItems.forEach(item => {
-        // Format stock display for dropdown
         let stockDisplay = item.stock;
         if (item.unit === 'each' || item.unit === 'slice' || item.unit === 'head') {
             stockDisplay = Math.round(item.stock);
@@ -602,7 +1292,13 @@ function populateInventoryDropdown() {
             stockDisplay = item.stock.toFixed(1);
         }
         
-        options += `<option value="${item.id}">${item.name} (Current: ${stockDisplay} ${item.unit})</option>`;
+        // Check if this inventory item is low or out of stock
+        const stockStatus = item.stock <= 0 ? 'OUT OF STOCK' : 
+                           (item.stock <= item.reorder ? 'LOW' : '');
+        
+        const statusText = stockStatus ? ` [${stockStatus}]` : '';
+        
+        options += `<option value="${item.id}">${item.name} (Current: ${stockDisplay} ${item.unit})${statusText}</option>`;
     });
     
     select.innerHTML = options;
@@ -610,84 +1306,172 @@ function populateInventoryDropdown() {
 
 function showAddInventoryModal() {
     if (!hasPermission('inventory')) {
-        showNotification('You don\'t have permission to add items', 'error');
+        showNotification('Access denied', 'error');
         return;
     }
+    
+    // Suggest inventory items based on menu items
+    suggestInventoryItems();
     
     document.getElementById('add-inventory-modal').style.display = 'flex';
 }
 
+function suggestInventoryItems() {
+    // Get all menu items
+    const menuItems = JSON.parse(localStorage.getItem('menuItems') || '[]');
+    const inventoryItems = JSON.parse(localStorage.getItem('inventoryItems') || '[]');
+    
+    // Find menu items that don't have corresponding inventory
+    const missingInventory = menuItems.filter(menuItem => {
+        return !inventoryItems.some(invItem => 
+            invItem.name.toLowerCase() === menuItem.name.toLowerCase()
+        );
+    });
+    
+    // Create suggestion div if it doesn't exist
+    let suggestionsEl = document.getElementById('inventory-suggestions');
+    if (!suggestionsEl) {
+        const modalBody = document.querySelector('#add-inventory-modal .modal-body');
+        if (modalBody) {
+            const suggestions = document.createElement('div');
+            suggestions.id = 'inventory-suggestions';
+            suggestions.className = 'inventory-suggestions';
+            suggestions.style.marginBottom = '20px';
+            suggestions.style.padding = '15px';
+            suggestions.style.background = '#e8f4fd';
+            suggestions.style.borderRadius = '8px';
+            suggestions.style.borderLeft = '4px solid #3498db';
+            modalBody.insertBefore(suggestions, modalBody.firstChild);
+            suggestionsEl = suggestions;
+        }
+    }
+    
+    if (suggestionsEl) {
+        if (missingInventory.length > 0) {
+            let html = '<h4 style="margin: 0 0 10px 0; color: #2c3e50; font-size: 14px;">';
+            html += '<i class="fas fa-lightbulb" style="color: #f39c12;"></i> Suggested Inventory Items';
+            html += '</h4>';
+            html += '<p style="margin: 0 0 10px 0; color: #2c3e50; font-size: 13px;">';
+            html += 'These items are on your menu but not in inventory:';
+            html += '</p>';
+            html += '<div style="display: flex; flex-wrap: wrap; gap: 8px;">';
+            
+            missingInventory.slice(0, 5).forEach(item => {
+                html += '<button class="btn-sm btn-secondary" onclick="quickAddInventoryItem(\'' + item.name + '\', \'each\', 20, ' + (item.price * 0.3).toFixed(2) + ')">';
+                html += '<i class="fas fa-plus"></i> ' + item.name;
+                html += '</button>';
+            });
+            
+            if (missingInventory.length > 5) {
+                html += '<span style="font-size: 12px; color: #7f8c8d;">+' + (missingInventory.length - 5) + ' more</span>';
+            }
+            
+            html += '</div>';
+            suggestionsEl.innerHTML = html;
+        } else {
+            suggestionsEl.innerHTML = '<h4 style="margin: 0 0 5px 0; color: #27ae60; font-size: 14px;">' +
+                '<i class="fas fa-check-circle"></i> All menu items have inventory</h4>' +
+                '<p style="margin: 0; color: #2c3e50; font-size: 13px;">' +
+                'Great! Every menu item has corresponding inventory tracking.</p>';
+        }
+    }
+}
+
+function quickAddInventoryItem(name, unit, reorder, cost) {
+    document.getElementById('new-item-name').value = name;
+    document.getElementById('new-item-unit').value = unit;
+    document.getElementById('new-item-reorder').value = reorder;
+    document.getElementById('new-item-cost').value = cost.toFixed(2);
+    
+    showNotification(`Ready to add ${name} to inventory`, 'success');
+}
+
 function closeAddInventoryModal() {
     document.getElementById('add-inventory-modal').style.display = 'none';
-    // Clear form
     document.getElementById('new-item-name').value = '';
     document.getElementById('new-item-unit').value = 'each';
     document.getElementById('new-item-reorder').value = '';
     document.getElementById('new-item-cost').value = '';
+    
+    // Remove suggestions div if it exists
+    const suggestionsEl = document.getElementById('inventory-suggestions');
+    if (suggestionsEl) {
+        suggestionsEl.remove();
+    }
 }
 
 function addInventoryItem() {
-    if (!hasPermission('inventory')) return;
-    
     const name = document.getElementById('new-item-name').value.trim();
     const unit = document.getElementById('new-item-unit').value;
     const reorder = parseInt(document.getElementById('new-item-reorder').value);
     const cost = parseFloat(document.getElementById('new-item-cost').value);
     
     if (!name) {
-        showNotification('Please enter item name', 'warning');
+        showNotification('Please enter item name', 'error');
         return;
     }
     
     if (isNaN(reorder) || reorder <= 0) {
-        showNotification('Please enter a valid reorder level', 'warning');
+        showNotification('Please enter valid reorder level', 'error');
         return;
     }
     
     if (isNaN(cost) || cost <= 0) {
-        showNotification('Please enter a valid cost', 'warning');
+        showNotification('Please enter valid cost', 'error');
         return;
     }
     
-    // Generate new ID
+    // Check if item already exists in inventory
+    const existingItem = inventoryItems.find(item => 
+        item.name.toLowerCase() === name.toLowerCase()
+    );
+    
+    if (existingItem) {
+        showNotification(`"${name}" already exists in inventory!`, 'warning');
+        return;
+    }
+    
     const newId = inventoryItems.length > 0 ? Math.max(...inventoryItems.map(i => i.id)) + 1 : 1;
     
     const newItem = {
         id: newId,
         name: name,
-        stock: 0, // Start with 0 stock
+        stock: 0,
         unit: unit,
         reorder: reorder,
-        status: 'out',
-        cost: cost
+        cost: cost,
+        status: 'out'
     };
     
     inventoryItems.push(newItem);
-    
-    // Save to localStorage
     localStorage.setItem('inventoryItems', JSON.stringify(inventoryItems));
     
-    // Re-render
     renderInventory(inventoryItems);
     populateInventoryDropdown();
-    
     closeAddInventoryModal();
-    showNotification(`Added ${name} to inventory`, 'success');
+    
+    // Check if this item is on the menu
+    const menuItem = menuItems.find(item => item.name.toLowerCase() === name.toLowerCase());
+    if (menuItem) {
+        showNotification(`Added ${name} to inventory. This item is on the menu - remember to stock it!`, 'success');
+    } else {
+        showNotification(`Added ${name} to inventory`, 'success');
+    }
+    
+    // Check for out of stock warnings
+    checkInventoryWarnings();
 }
 
 function showReceiveStockModal(itemId = null) {
     if (!hasPermission('inventory')) {
-        showNotification('You don\'t have permission to receive stock', 'error');
+        showNotification('Access denied', 'error');
         return;
     }
     
     populateInventoryDropdown();
     
     if (itemId) {
-        const select = document.getElementById('receive-item');
-        if (select) {
-            select.value = itemId;
-        }
+        document.getElementById('receive-item').value = itemId;
     }
     
     document.getElementById('receive-stock-modal').style.display = 'flex';
@@ -699,24 +1483,22 @@ function closeReceiveStockModal() {
 }
 
 function receiveStock() {
-    if (!hasPermission('inventory')) return;
-    
     const itemId = document.getElementById('receive-item').value;
     const quantity = parseFloat(document.getElementById('receive-quantity').value);
     
     if (!itemId) {
-        showNotification('Please select an item', 'warning');
+        showNotification('Please select an item', 'error');
         return;
     }
     
     if (!quantity || quantity <= 0) {
-        showNotification('Please enter a valid quantity', 'warning');
+        showNotification('Please enter valid quantity', 'error');
         return;
     }
     
     const item = inventoryItems.find(i => i.id == itemId);
     if (item) {
-        // Update stock
+        const oldStock = item.stock;
         item.stock += quantity;
         
         // Update status
@@ -728,163 +1510,86 @@ function receiveStock() {
             item.status = 'ok';
         }
         
-        // Record transaction
-        saveInventoryTransaction(item, quantity, 'received', null);
+        localStorage.setItem('inventoryItems', JSON.stringify(inventoryItems));
         
-        // Re-render inventory with updated values
         renderInventory(inventoryItems);
         populateInventoryDropdown();
         
-        // Save to localStorage
-        localStorage.setItem('inventoryItems', JSON.stringify(inventoryItems));
-        
-        // Update low stock alerts
-        updateLowStockAlerts();
-        
         showNotification(`Received ${quantity} ${item.unit} of ${item.name}`, 'success');
+        
+        // Check if this item was out of stock and now has stock
+        if (oldStock <= 0 && item.stock > 0) {
+            showNotification(`✅ ${item.name} is now back in stock!`, 'success');
+        }
     }
     
     closeReceiveStockModal();
 }
 
-function saveInventoryTransaction(item, quantity, type, orderId) {
-    const transaction = {
-        id: Date.now() + Math.random(),
-        itemId: item.id,
-        itemName: item.name,
-        quantity: quantity,
-        type: type, // 'sold' or 'received'
-        orderId: orderId,
-        timestamp: new Date().toLocaleString(),
-        staff: currentUser ? currentUser.name : 'System'
-    };
-    
-    inventoryTransactions.unshift(transaction);
-    
-    // Keep only last 100 transactions
-    if (inventoryTransactions.length > 100) {
-        inventoryTransactions = inventoryTransactions.slice(0, 100);
-    }
-    
-    localStorage.setItem('inventoryTransactions', JSON.stringify(inventoryTransactions));
+function showDeleteModal(itemId) {
+    itemToDelete = itemId;
+    deleteCallback = confirmDeleteItem;
+    document.getElementById('delete-message').textContent = 'Are you sure you want to delete this inventory item?';
+    document.getElementById('delete-confirm-modal').style.display = 'flex';
 }
 
-function updateInventoryFromOrder(order) {
-    if (!inventoryItems || inventoryItems.length === 0) return;
-    
-    const recipeIngredients = {
-        'Classic Burger': [
-            { name: 'Beef Patty', quantity: 1 },
-            { name: 'Burger Bun', quantity: 1 },
-            { name: 'Lettuce', quantity: 0.2 },
-            { name: 'Cheese', quantity: 1 }
-        ],
-        'Cheeseburger': [
-            { name: 'Beef Patty', quantity: 1 },
-            { name: 'Burger Bun', quantity: 1 },
-            { name: 'Lettuce', quantity: 0.2 },
-            { name: 'Cheese', quantity: 2 }
-        ],
-        'French Fries': [
-            { name: 'Frying Oil', quantity: 0.1 }
-        ],
-        'Chicken Wings': [
-            { name: 'Chicken Wings', quantity: 1 },
-            { name: 'Frying Oil', quantity: 0.2 }
-        ],
-        'Soda': [
-            { name: 'Soda Syrup', quantity: 0.1 }
-        ],
-        'Ice Cream': [],
-        'Caesar Salad': [
-            { name: 'Lettuce', quantity: 0.5 }
-        ],
-        'Steak': [
-            { name: 'Beef Patty', quantity: 2 }
-        ]
-    };
-    
-    let inventoryUpdated = false;
-    let updatedItems = [];
-    
-    // Count item quantities in the order
-    const itemCounts = new Map();
-    order.items.forEach(item => {
-        const count = itemCounts.get(item.name) || 0;
-        itemCounts.set(item.name, count + 1);
-    });
-    
-    itemCounts.forEach((count, itemName) => {
-        const ingredients = recipeIngredients[itemName];
-        if (!ingredients) return;
-        
-        ingredients.forEach(ingredient => {
-            const inventoryItem = inventoryItems.find(i => 
-                i.name.toLowerCase() === ingredient.name.toLowerCase()
-            );
-            
-            if (inventoryItem) {
-                const totalQuantity = ingredient.quantity * count;
-                const oldStock = inventoryItem.stock;
-                inventoryItem.stock = Math.max(0, inventoryItem.stock - totalQuantity);
-                
-                // Track which items were updated
-                if (!updatedItems.includes(inventoryItem.name)) {
-                    updatedItems.push(inventoryItem.name);
-                }
-                
-                // Update status
-                if (inventoryItem.stock <= 0) {
-                    inventoryItem.status = 'out';
-                } else if (inventoryItem.stock <= inventoryItem.reorder) {
-                    inventoryItem.status = 'low';
-                } else {
-                    inventoryItem.status = 'ok';
-                }
-                
-                // Record transaction
-                saveInventoryTransaction(inventoryItem, totalQuantity, 'sold', order.id);
-                inventoryUpdated = true;
-                
-                console.log(`Inventory updated: ${inventoryItem.name} - ${oldStock} → ${inventoryItem.stock} (used: ${totalQuantity})`);
-            }
-        });
-    });
-    
-    if (inventoryUpdated) {
-        // Save to localStorage
-        localStorage.setItem('inventoryItems', JSON.stringify(inventoryItems));
-        
-        // Re-render inventory with updated values
-        renderInventory(inventoryItems);
-        
-        // Update low stock alerts
-        updateLowStockAlerts();
-        
-        // Check for critical stock levels
-        checkLowStockAfterOrder(updatedItems);
-        
-        console.log('Inventory updated successfully. Total value:', calculateTotalInventoryValue());
-    }
+function closeDeleteModal() {
+    document.getElementById('delete-confirm-modal').style.display = 'none';
+    itemToDelete = null;
+    deleteCallback = null;
 }
 
-function checkLowStockAfterOrder(updatedItems = []) {
-    if (!inventoryItems) return;
+function confirmDelete() {
+    if (deleteCallback) {
+        deleteCallback();
+    }
+    closeDeleteModal();
+}
+
+function confirmDeleteItem() {
+    const deletedItem = inventoryItems.find(i => i.id === itemToDelete);
+    inventoryItems = inventoryItems.filter(i => i.id !== itemToDelete);
+    localStorage.setItem('inventoryItems', JSON.stringify(inventoryItems));
     
-    const lowStock = inventoryItems.filter(item => item.stock > 0 && item.stock <= item.reorder);
-    const outOfStock = inventoryItems.filter(item => item.stock <= 0);
+    renderInventory(inventoryItems);
+    populateInventoryDropdown();
     
-    // Only show notifications for items that were actually affected by this order
-    const affectedLowStock = lowStock.filter(item => updatedItems.includes(item.name));
-    const affectedOutOfStock = outOfStock.filter(item => updatedItems.includes(item.name));
+    // Check if deleted item was on the menu
+    if (deletedItem) {
+        const menuItem = menuItems.find(item => item.name.toLowerCase() === deletedItem.name.toLowerCase());
+        if (menuItem) {
+            showNotification(`⚠️ Warning: ${deletedItem.name} is on the menu but removed from inventory!`, 'warning');
+        }
+    }
     
-    // Show notifications for critical stock
-    if (affectedOutOfStock.length > 0) {
-        const items = affectedOutOfStock.map(i => i.name).join(', ');
-        showNotification(`⚠️ OUT OF STOCK: ${items}`, 'error');
-    } else if (affectedLowStock.length > 0) {
-        const items = affectedLowStock.map(i => i.name).join(', ');
-        showNotification(`⚠️ Low stock: ${items}`, 'warning');
+    showNotification('Item deleted', 'success');
+}
+
+function checkInventoryWarnings() {
+    if (!inventoryItems || !menuItems) return;
+    
+    // Find menu items that are out of stock in inventory
+    const outOfStockMenuItems = menuItems.filter(menuItem => {
+        const inventoryItem = inventoryItems.find(invItem => 
+            invItem.name.toLowerCase() === menuItem.name.toLowerCase()
+        );
+        return inventoryItem && inventoryItem.stock <= 0;
+    });
+    
+    if (outOfStockMenuItems.length > 0) {
+        const items = outOfStockMenuItems.map(i => i.name).join(', ');
+        showNotification(`⚠️ OUT OF STOCK: ${items} are on the menu but have no inventory!`, 'error');
+    }
+    
+    // Find low stock items
+    const lowStockItems = inventoryItems.filter(item => 
+        item.stock > 0 && item.stock <= item.reorder && 
+        menuItems.some(menuItem => menuItem.name.toLowerCase() === item.name.toLowerCase())
+    );
+    
+    if (lowStockItems.length > 0) {
+        const items = lowStockItems.map(i => i.name).join(', ');
+        showNotification(`⚠️ LOW STOCK: ${items} are running low!`, 'warning');
     }
 }
 
@@ -893,98 +1598,36 @@ function checkLowStockAfterOrder(updatedItems = []) {
 // =============================================
 
 function updateDashboardMetrics() {
-    // Get sales data from localStorage
-    let salesData = [];
-    try {
-        const saved = localStorage.getItem('dailySales');
-        if (saved) {
-            salesData = JSON.parse(saved);
-        }
-    } catch (e) {
-        console.error('Error loading sales data:', e);
-    }
-    
+    let salesData = JSON.parse(localStorage.getItem('dailySales') || '[]');
     const now = new Date();
     const today = now.toLocaleDateString();
     
-    // Filter today's sales
     const todaySales = salesData.filter(sale => sale.date === today);
-    
-    // Calculate today's total sales
     const todayTotal = todaySales.reduce((sum, sale) => sum + (sale.total || 0), 0);
-    
-    // Calculate today's order count
     const todayOrders = todaySales.length;
-    
-    // Calculate average order value for today
     const avgOrderValue = todayOrders > 0 ? todayTotal / todayOrders : 0;
     
-    // Calculate active tables (unique tables that have orders today and are not served/completed)
-    const uniqueTables = new Set();
-    todaySales.forEach(sale => {
-        if (sale.table && sale.table !== 'takeout' && sale.table !== 'delivery') {
-            uniqueTables.add(sale.table);
-        }
-    });
-    
-    // Get active kitchen orders that are not served
-    const activeKitchenOrders = kitchenOrders.filter(order => 
-        order.status !== 'served' && order.status !== 'completed'
-    ).length;
-    
-    // Use max of unique tables from today or active kitchen orders
-    const activeTables = Math.max(uniqueTables.size, activeKitchenOrders);
-    
-    // Update the DOM elements
-    const todaySalesEl = document.getElementById('today-sales');
-    const todayOrdersEl = document.getElementById('today-orders');
-    const avgOrderEl = document.getElementById('avg-order');
-    const activeTablesEl = document.getElementById('active-tables');
-    
-    if (todaySalesEl) {
-        todaySalesEl.textContent = todayTotal > 0 ? `$${todayTotal.toFixed(2)}` : '$0.00';
-    }
-    
-    if (todayOrdersEl) {
-        todayOrdersEl.textContent = todayOrders > 0 ? todayOrders : '0';
-    }
-    
-    if (avgOrderEl) {
-        avgOrderEl.textContent = avgOrderValue > 0 ? `$${avgOrderValue.toFixed(2)}` : '$0.00';
-    }
-    
-    if (activeTablesEl) {
-        activeTablesEl.textContent = `${activeTables}/8`;
-    }
+    document.getElementById('today-sales').textContent = `$${todayTotal.toFixed(2)}`;
+    document.getElementById('today-orders').textContent = todayOrders;
+    document.getElementById('avg-order').textContent = `$${avgOrderValue.toFixed(2)}`;
+    document.getElementById('active-tables').textContent = `${kitchenOrders.length}/8`;
 }
 
 function updateTopItems() {
     const tbody = document.getElementById('top-items-body');
     if (!tbody) return;
     
-    tbody.innerHTML = '';
+    let salesData = JSON.parse(localStorage.getItem('dailySales') || '[]');
     
-    let salesData = [];
-    try {
-        const saved = localStorage.getItem('dailySales');
-        if (saved) {
-            salesData = JSON.parse(saved);
-        }
-    } catch (e) {
-        console.error('Error loading sales data:', e);
-    }
-    
-    // If no sales data, show empty state
-    if (!salesData || salesData.length === 0) {
+    if (!salesData.length) {
         tbody.innerHTML = '<tr><td colspan="3" class="loading">No sales data yet. Complete a sale to see top items.</td></tr>';
         return;
     }
     
-    // Calculate top items from sales data with proper integer quantities
     const itemSales = new Map();
     
     salesData.forEach(sale => {
-        if (sale.items && Array.isArray(sale.items)) {
+        if (sale.items) {
             sale.items.forEach(item => {
                 const itemName = item.name;
                 const itemPrice = item.price || 0;
@@ -1004,31 +1647,30 @@ function updateTopItems() {
         }
     });
     
-    // Convert to array and sort by revenue in DESCENDING order
     const topItems = Array.from(itemSales.values())
         .sort((a, b) => b.revenue - a.revenue)
         .slice(0, 5);
     
-    if (topItems.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="3" class="loading">No sales data yet. Complete a sale to see top items.</td></tr>';
-        return;
-    }
-    
-    // Ensure quantities are integers (whole numbers)
-    topItems.forEach(item => {
-        item.quantity = Math.round(item.quantity);
+    let html = '';
+    topItems.forEach((item, index) => {
+        // Check if this top-selling item is low on stock
+        const inventoryItem = inventoryItems.find(inv => inv.name.toLowerCase() === item.name.toLowerCase());
+        const stockWarning = (inventoryItem && inventoryItem.stock <= inventoryItem.reorder) ? 
+            ' <span class="warning-badge" style="color: #e74c3c; font-size: 11px;">(Low Stock)</span>' : '';
+        
+        html += '<tr>';
+        html += '<td>';
+        if (index === 0) html += '🥇 ';
+        else if (index === 1) html += '🥈 ';
+        else if (index === 2) html += '🥉 ';
+        html += '<strong>' + item.name + '</strong>' + stockWarning;
+        html += '</td>';
+        html += '<td>' + item.quantity + '</td>';
+        html += '<td>$' + item.revenue.toFixed(2) + '</td>';
+        html += '</tr>';
     });
     
-    tbody.innerHTML = topItems.map((item, index) => `
-        <tr>
-            <td>
-                ${index === 0 ? '🥇 ' : index === 1 ? '🥈 ' : index === 2 ? '🥉 ' : ''}
-                <strong>${item.name}</strong>
-            </td>
-            <td>${item.quantity}</td>
-            <td>$${item.revenue.toFixed(2)}</td>
-        </tr>
-    `).join('');
+    tbody.innerHTML = html;
 }
 
 function updateLowStockAlerts() {
@@ -1037,133 +1679,240 @@ function updateLowStockAlerts() {
     
     alertsDiv.innerHTML = '';
     
-    if (!inventoryItems || inventoryItems.length === 0) {
-        loadInventory();
-        if (!inventoryItems || inventoryItems.length === 0) {
-            alertsDiv.innerHTML = '<div class="alert alert-info">No inventory items yet. Add items to start tracking stock.</div>';
-            return;
-        }
+    if (!inventoryItems.length) {
+        alertsDiv.innerHTML = '<div class="alert alert-info">No inventory items yet</div>';
+        return;
     }
     
-    const lowStock = inventoryItems.filter(item => 
-        item.stock > 0 && item.stock <= item.reorder
-    );
-    
-    const outOfStock = inventoryItems.filter(item => 
-        item.stock <= 0
-    );
+    const lowStock = inventoryItems.filter(item => item.stock > 0 && item.stock <= item.reorder);
+    const outOfStock = inventoryItems.filter(item => item.stock <= 0);
     
     if (lowStock.length === 0 && outOfStock.length === 0) {
         alertsDiv.innerHTML = '<div class="alert alert-success">✅ All stock levels are good</div>';
         return;
     }
     
+    // Show out of stock items with menu warning
     outOfStock.forEach(item => {
-        // Format stock for display
-        let stockDisplay = item.stock;
-        if (item.unit === 'each' || item.unit === 'slice' || item.unit === 'head') {
-            stockDisplay = Math.round(item.stock);
-        } else {
-            stockDisplay = item.stock.toFixed(1);
-        }
+        const isOnMenu = menuItems.some(menuItem => menuItem.name.toLowerCase() === item.name.toLowerCase());
+        const menuWarning = isOnMenu ? ' ⚠️ ON MENU' : '';
         
         const alertItem = document.createElement('div');
         alertItem.className = 'alert alert-danger';
-        alertItem.innerHTML = `
-            <div style="display: flex; align-items: center; gap: 10px;">
-                <i class="fas fa-times-circle"></i>
-                <div style="flex: 1;">
-                    <strong>${item.name}</strong> - OUT OF STOCK!
-                </div>
-                <button class="btn btn-sm btn-primary" onclick="showReceiveStockModal(${item.id})">
-                    <i class="fas fa-plus"></i> Order
-                </button>
-            </div>
-        `;
+        
+        let html = '<div style="display: flex; align-items: center; gap: 10px;">';
+        html += '<i class="fas fa-times-circle"></i>';
+        html += '<div style="flex: 1;">';
+        html += '<strong>' + item.name + '</strong> - OUT OF STOCK!' + menuWarning;
+        html += '</div>';
+        
+        if (hasPermission('inventory')) {
+            html += '<button class="btn-sm btn-primary" onclick="showReceiveStockModal(' + item.id + ')">';
+            html += '<i class="fas fa-plus"></i> Order';
+            html += '</button>';
+        }
+        
+        html += '</div>';
+        alertItem.innerHTML = html;
         alertsDiv.appendChild(alertItem);
     });
     
+    // Show low stock items
     lowStock.forEach(item => {
-        // Format stock for display
-        let stockDisplay = item.stock;
-        if (item.unit === 'each' || item.unit === 'slice' || item.unit === 'head') {
-            stockDisplay = Math.round(item.stock);
-        } else {
-            stockDisplay = item.stock.toFixed(1);
-        }
-        
         const alertItem = document.createElement('div');
         alertItem.className = 'alert alert-warning';
-        alertItem.innerHTML = `
-            <div style="display: flex; align-items: center; gap: 10px; padding: 10px 20px; margin: 10px;">
-                <i class="fas fa-exclamation-triangle"></i>
-                <div style="flex: 1;">
-                    <strong>${item.name}</strong> - Low stock: ${stockDisplay} ${item.unit} remaining<br>
-                    <small>Reorder at: ${item.reorder}</small>
-                </div>
-                <button class="btn btn-sm btn-primary" onclick="showReceiveStockModal(${item.id})">
-                    <i class="fas fa-plus"></i> Order
-                </button>
-            </div>
-        `;
+        
+        let html = '<div style="display: flex; align-items: center; gap: 10px;">';
+        html += '<i class="fas fa-exclamation-triangle"></i>';
+        html += '<div style="flex: 1;">';
+        html += '<strong>' + item.name + '</strong> - Low stock: ' + item.stock + ' ' + item.unit + ' remaining';
+        html += '</div>';
+        
+        if (hasPermission('inventory')) {
+            html += '<button class="btn-sm btn-primary" onclick="showReceiveStockModal(' + item.id + ')">';
+            html += '<i class="fas fa-plus"></i> Order';
+            html += '</button>';
+        }
+        
+        html += '</div>';
+        alertItem.innerHTML = html;
         alertsDiv.appendChild(alertItem);
     });
 }
 
-function saveOrderToSalesHistory(order) {
-    try {
-        let salesData = [];
-        const saved = localStorage.getItem('dailySales');
-        if (saved) {
-            salesData = JSON.parse(saved);
+// =============================================
+// KITCHEN FUNCTIONS
+// =============================================
+
+function loadSavedKitchenOrders() {
+    const saved = localStorage.getItem('kitchenOrders');
+    kitchenOrders = saved ? JSON.parse(saved) : [];
+    renderKitchenOrders();
+}
+
+function saveKitchenOrders() {
+    localStorage.setItem('kitchenOrders', JSON.stringify(kitchenOrders));
+}
+
+function renderKitchenOrders() {
+    const container = document.getElementById('kitchen-orders');
+    if (!container) return;
+    
+    if (!kitchenOrders.length) {
+        container.innerHTML = '<div class="loading">No active orders</div>';
+        updateKitchenBadges();
+        return;
+    }
+    
+    const sortedOrders = [...kitchenOrders].sort((a, b) => {
+        const statusOrder = { 'new': 0, 'preparing': 1, 'ready': 2 };
+        if (statusOrder[a.status] !== statusOrder[b.status]) {
+            return statusOrder[a.status] - statusOrder[b.status];
         }
+        return new Date(`1970/01/01 ${b.time}`) - new Date(`1970/01/01 ${a.time}`);
+    });
+    
+    updateKitchenBadges();
+    
+    let html = '';
+    sortedOrders.forEach(order => {
+        const canUpdate = hasPermission('kitchen') || currentUser.role === 'cook';
         
-        // Save items as they are - each occurrence will be counted separately
-        const orderItems = order.items.map(item => ({
-            name: item.name,
-            price: item.price
-        }));
-        
-        const now = new Date();
-        
-        salesData.push({
+        // Create a properly formatted order object for printing
+        const printOrder = {
             id: order.id,
-            table: order.table,
-            items: orderItems,
-            total: order.total,
-            timestamp: order.timestamp || now.toLocaleString(),
-            date: now.toLocaleDateString(),
-            hour: now.getHours()
+            table: order.table_number === 'Takeout' ? 'takeout' : 
+                   order.table_number === 'Delivery' ? 'delivery' : 
+                   order.table_number.replace('Table ', ''),
+            items: order.items.map(item => ({
+                name: item.name,
+                quantity: item.quantity
+            })),
+            staff: order.created_by
+        };
+        
+        // Convert to JSON string safely for onclick
+        const printOrderJson = JSON.stringify(printOrder).replace(/'/g, "\\'");
+        
+        html += '<div class="kitchen-order-card ' + order.status + '">';
+        html += '<div class="kitchen-order-header">';
+        html += '<span class="kitchen-order-table">' + order.table_number + '</span>';
+        html += '<span class="kitchen-order-time">' + order.time + '</span>';
+        html += '</div>';
+        html += '<div class="kitchen-order-items">';
+        
+        order.items.forEach(item => {
+            html += '<div class="kitchen-order-item">' + item.quantity + 'x ' + item.name + '</div>';
         });
         
-        if (salesData.length > 500) { // Keep last 500 orders
-            salesData = salesData.slice(-500);
+        html += '</div>';
+        html += '<div class="kitchen-order-footer">';
+        html += '<i class="fas fa-user"></i> Taken by: ' + (order.created_by || 'Unknown');
+        html += '</div>';
+        html += '<div class="kitchen-order-actions">';
+        
+        if (canUpdate) {
+            if (order.status === 'new') {
+                html += '<button class="btn-secondary" onclick="updateOrderStatus(' + order.id + ', \'preparing\')">Start Preparing</button>';
+            } else if (order.status === 'preparing') {
+                html += '<button class="btn-primary" onclick="updateOrderStatus(' + order.id + ', \'ready\')">Mark Ready</button>';
+            } else if (order.status === 'ready') {
+                html += '<span class="badge-success">✓ Ready</span>';
+            }
         }
         
-        localStorage.setItem('dailySales', JSON.stringify(salesData));
-        
-        // Update dashboard metrics
-        updateDashboardMetrics();
-        
-        // Update overview components
-        updateTopItems();
-        updateCharts();
-        
-        // AUTO-REFRESH REPORTS if on reports tab
-        if (document.getElementById('reports-tab').classList.contains('active')) {
-            // Small delay to ensure data is saved
-            setTimeout(() => {
-                loadReports();
-            }, 50);
-        }
-        
-    } catch (e) {
-        console.error('Error saving order:', e);
+        html += '<button class="btn-info" onclick=\'printKitchenTicket(' + printOrderJson + ')\' style="margin-left: 5px;">';
+        html += '<i class="fas fa-print"></i> Print';
+        html += '</button>';
+        html += '</div>';
+        html += '</div>';
+    });
+    
+    container.innerHTML = html;
+}
+
+function updateKitchenBadges() {
+    const newCount = kitchenOrders.filter(o => o.status === 'new').length;
+    const preparingCount = kitchenOrders.filter(o => o.status === 'preparing').length;
+    const readyCount = kitchenOrders.filter(o => o.status === 'ready').length;
+    
+    document.getElementById('kitchen-badge').textContent = kitchenOrders.length;
+    document.getElementById('new-count').textContent = newCount;
+    document.getElementById('preparing-count').textContent = preparingCount;
+    document.getElementById('ready-count').textContent = readyCount;
+}
+
+function updateOrderStatus(orderId, newStatus) {
+    const orderIndex = kitchenOrders.findIndex(o => o.id === orderId);
+    if (orderIndex === -1) return;
+    
+    kitchenOrders[orderIndex].status = newStatus;
+    
+    if (newStatus === 'ready') {
+        setTimeout(() => {
+            kitchenOrders = kitchenOrders.filter(o => o.id !== orderId);
+            renderKitchenOrders();
+            saveKitchenOrders();
+        }, 300000); // Auto-clear after 5 minutes
     }
+    
+    renderKitchenOrders();
+    saveKitchenOrders();
+    showNotification(`Order status updated`, 'success');
+}
+
+function addOrderToKitchen(order) {
+    const tableDisplay = order.table === 'takeout' ? 'Takeout' : 
+                        order.table === 'delivery' ? 'Delivery' : 
+                        `Table ${order.table}`;
+    
+    const itemMap = new Map();
+    order.items.forEach(item => {
+        if (itemMap.has(item.name)) {
+            itemMap.set(item.name, itemMap.get(item.name) + 1);
+        } else {
+            itemMap.set(item.name, 1);
+        }
+    });
+    
+    const groupedItems = [];
+    itemMap.forEach((quantity, name) => {
+        groupedItems.push({
+            name: name,
+            quantity: quantity
+        });
+    });
+    
+    const newOrder = {
+        id: order.id,
+        table_number: tableDisplay,
+        time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+        status: 'new',
+        created_by: currentUser.name,
+        items: groupedItems
+    };
+    
+    kitchenOrders.unshift(newOrder);
+    renderKitchenOrders();
+    saveKitchenOrders();
+    
+    console.log('Order added to kitchen:', newOrder);
+}
+
+function clearCompletedOrders() {
+    if (!hasPermission('reports') && !hasPermission('settings') && currentUser.role !== 'admin') {
+        showNotification('Access denied', 'error');
+        return;
+    }
+    
+    kitchenOrders = kitchenOrders.filter(o => o.status !== 'ready');
+    renderKitchenOrders();
+    saveKitchenOrders();
+    showNotification('Completed orders cleared', 'success');
 }
 
 // =============================================
-// PAYMENT PROCESSING FUNCTIONS
+// PAYMENT FUNCTIONS
 // =============================================
 
 function processPayment() {
@@ -1173,8 +1922,17 @@ function processPayment() {
     }
     
     if (cart.length === 0) {
-        showNotification('Cart is empty', 'warning');
+        showNotification('Cart is empty', 'error');
         return;
+    }
+    
+    // Check inventory before processing payment
+    const outOfStockItems = checkCartAgainstInventory();
+    if (outOfStockItems.length > 0) {
+        const items = outOfStockItems.join(', ');
+        if (!confirm(`⚠️ WARNING: The following items are out of stock: ${items}\n\nDo you want to continue with the sale anyway?`)) {
+            return;
+        }
     }
     
     tipAmount = 0;
@@ -1184,9 +1942,29 @@ function processPayment() {
     document.getElementById('payment-modal').style.display = 'flex';
 }
 
+function checkCartAgainstInventory() {
+    const outOfStock = [];
+    
+    cart.forEach(item => {
+        const inventoryItem = inventoryItems.find(inv => 
+            inv.name.toLowerCase() === item.name.toLowerCase()
+        );
+        
+        if (inventoryItem && inventoryItem.stock <= 0) {
+            if (!outOfStock.includes(item.name)) {
+                outOfStock.push(item.name);
+            }
+        }
+    });
+    
+    return outOfStock;
+}
+
 function updatePaymentModal() {
     const subtotal = cart.reduce((sum, item) => sum + item.price, 0);
-    const tax = subtotal * 0.085;
+    const info = JSON.parse(localStorage.getItem('restaurantInfo') || '{}');
+    const taxRate = info.taxRate || 8.5;
+    const tax = subtotal * (taxRate / 100);
     const total = subtotal + tax;
     
     document.getElementById('payment-subtotal').textContent = `$${subtotal.toFixed(2)}`;
@@ -1194,34 +1972,31 @@ function updatePaymentModal() {
     document.getElementById('payment-total').textContent = `$${total.toFixed(2)}`;
     
     const itemsDiv = document.getElementById('payment-items');
-    if (itemsDiv) {
-        // Group items for display
-        const itemMap = new Map();
-        cart.forEach(item => {
-            const key = item.name;
-            if (itemMap.has(key)) {
-                const existing = itemMap.get(key);
-                existing.quantity += 1;
-                existing.total += item.price;
-            } else {
-                itemMap.set(key, {
-                    name: item.name,
-                    price: item.price,
-                    quantity: 1,
-                    total: item.price
-                });
-            }
-        });
-        
-        itemsDiv.innerHTML = Array.from(itemMap.values()).map(item => `
-            <div class="payment-item">
-                <span>${item.name} ${item.quantity > 1 ? `(x${item.quantity})` : ''}</span>
-                <span>$${item.total.toFixed(2)}</span>
-            </div>
-        `).join('');
-    }
+    const itemMap = new Map();
+    cart.forEach(item => {
+        const key = item.name;
+        if (itemMap.has(key)) {
+            const existing = itemMap.get(key);
+            existing.quantity += 1;
+            existing.total += item.price;
+        } else {
+            itemMap.set(key, {
+                name: item.name,
+                quantity: 1,
+                total: item.price
+            });
+        }
+    });
     
-    selectPaymentMethod('cash');
+    let html = '';
+    itemMap.forEach(item => {
+        html += '<div class="payment-item">';
+        html += '<span>' + item.name + (item.quantity > 1 ? ' (x' + item.quantity + ')' : '') + '</span>';
+        html += '<span>$' + item.total.toFixed(2) + '</span>';
+        html += '</div>';
+    });
+    
+    itemsDiv.innerHTML = html;
     
     document.getElementById('amount-tendered').value = '';
     document.getElementById('change-amount').value = '0.00';
@@ -1251,7 +2026,6 @@ function calculateChange() {
     const total = parseFloat(document.getElementById('payment-total').textContent.replace('$', ''));
     const tendered = parseFloat(document.getElementById('amount-tendered').value) || 0;
     const change = tendered - total;
-    
     document.getElementById('change-amount').value = change > 0 ? change.toFixed(2) : '0.00';
 }
 
@@ -1366,28 +2140,31 @@ function completePayment() {
         showNotification('Gift card payment approved', 'success');
     }
     
-    // Close payment modal IMMEDIATELY
+    // Close payment modal
     closePaymentModal();
     
-    // Update inventory (this will automatically update total value and low stock alerts)
+    // Update inventory
     updateInventoryFromOrder(order);
     
     // Save to sales history
     saveOrderToSalesHistory(order);
     
-    // Print receipt - open in new window without blocking
+    // Print receipt automatically
     setTimeout(() => {
         printReceipt(order);
     }, 200);
     
-    // Add to kitchen display WITHOUT printing kitchen ticket
-    addOrderToKitchen(order, false);
+    // Add to kitchen display (without printing ticket - manual only)
+    addOrderToKitchen(order);
     
     // Clear cart
     clearCart();
     
     // Refresh data
     refreshData();
+    
+    // Check inventory warnings after sale
+    checkInventoryWarnings();
 }
 
 function closePaymentModal() {
@@ -1410,7 +2187,31 @@ function closePaymentModal() {
 // RECEIPT PRINTING FUNCTIONS
 // =============================================
 
+function getRestaurantInfo() {
+    const saved = localStorage.getItem('restaurantInfo');
+    if (saved) {
+        try {
+            return JSON.parse(saved);
+        } catch (e) {
+            return {
+                name: 'Restaurant Name',
+                address: '123 Main Street',
+                city: 'City, ST 12345',
+                phone: '(555) 123-4567'
+            };
+        }
+    }
+    return {
+        name: 'Restaurant Name',
+        address: '123 Main Street',
+        city: 'City, ST 12345',
+        phone: '(555) 123-4567'
+    };
+}
+
 function printReceipt(order) {
+    const restaurant = getRestaurantInfo();
+    
     let tableDisplay = order.table;
     if (order.table === 'takeout') {
         tableDisplay = 'TAKEOUT';
@@ -1436,12 +2237,22 @@ function printReceipt(order) {
         }
     });
     
+    let itemsHtml = '';
+    itemMap.forEach(item => {
+        itemsHtml += '<tr>';
+        itemsHtml += '<td style="text-align: left;">' + item.name + '</td>';
+        itemsHtml += '<td style="text-align: center;">' + item.quantity + '</td>';
+        itemsHtml += '<td style="text-align: right;">$' + (item.price * item.quantity).toFixed(2) + '</td>';
+        itemsHtml += '</tr>';
+    });
+    
     const receiptContent = `
         <div style="font-family: 'Courier New', monospace; max-width: 300px; margin: 0 auto; padding: 20px;">
             <div style="text-align: center; margin-bottom: 20px;">
-                <h2 style="margin: 0; font-size: 24px;">🍔 RESTAURANT POS</h2>
-                <p style="margin: 5px 0; font-size: 12px;">123 Main Street, City</p>
-                <p style="margin: 5px 0; font-size: 12px;">Tel: (555) 123-4567</p>
+                <h2 style="margin: 0; font-size: 24px;">🍔 ${restaurant.name}</h2>
+                <p style="margin: 5px 0; font-size: 12px;">${restaurant.address}</p>
+                <p style="margin: 5px 0; font-size: 12px;">${restaurant.city}</p>
+                <p style="margin: 5px 0; font-size: 12px;">Tel: ${restaurant.phone}</p>
                 <div style="border-top: 1px dashed #000; margin: 10px 0;"></div>
             </div>
             
@@ -1464,13 +2275,7 @@ function printReceipt(order) {
                         </tr>
                     </thead>
                     <tbody>
-                        ${Array.from(itemMap.values()).map(item => `
-                            <tr>
-                                <td style="text-align: left;">${item.name}</td>
-                                <td style="text-align: center;">${item.quantity}</td>
-                                <td style="text-align: right;">$${(item.price * item.quantity).toFixed(2)}</td>
-                            </tr>
-                        `).join('')}
+                        ${itemsHtml}
                     </tbody>
                 </table>
             </div>
@@ -1518,8 +2323,8 @@ function printReceipt(order) {
         </div>
     `;
     
-    // Open print window in a non-blocking way
-    const printWindow = window.open('', '_blank');
+    // Open print window
+    const printWindow = window.open('', '_blank', 'width=400,height=600');
     if (printWindow) {
         printWindow.document.write(`
             <html>
@@ -1552,6 +2357,8 @@ function printReceipt(order) {
 }
 
 function printKitchenTicket(order) {
+    const restaurant = getRestaurantInfo();
+    
     let tableDisplay = order.table;
     if (order.table === 'takeout') {
         tableDisplay = 'TAKEOUT';
@@ -1582,6 +2389,13 @@ function printKitchenTicket(order) {
         });
     }
     
+    let itemsHtml = '';
+    itemMap.forEach(item => {
+        itemsHtml += '<div style="font-size: 16px; margin-bottom: 5px;">';
+        itemsHtml += '<strong>' + item.quantity + 'x ' + item.name + '</strong>';
+        itemsHtml += '</div>';
+    });
+    
     const ticketContent = `
         <div style="font-family: 'Courier New', monospace; max-width: 300px; margin: 0 auto; padding: 20px;">
             <div style="text-align: center; margin-bottom: 20px;">
@@ -1600,11 +2414,7 @@ function printKitchenTicket(order) {
             
             <div style="margin-bottom: 15px;">
                 <h3 style="margin: 0 0 10px 0;">ITEMS TO PREPARE:</h3>
-                ${Array.from(itemMap.values()).map(item => `
-                    <div style="font-size: 16px; margin-bottom: 5px;">
-                        <strong>${item.quantity}x ${item.name}</strong>
-                    </div>
-                `).join('')}
+                ${itemsHtml}
             </div>
             
             <div style="border-top: 2px solid #000; margin: 10px 0;"></div>
@@ -1648,201 +2458,119 @@ function printKitchenTicket(order) {
 }
 
 // =============================================
-// KITCHEN FUNCTIONS - UPDATED WITH PRINT BUTTON
+// INVENTORY UPDATE FUNCTIONS
 // =============================================
 
-function loadSavedKitchenOrders() {
-    const saved = localStorage.getItem('kitchenOrders');
-    if (saved) {
-        try {
-            kitchenOrders = JSON.parse(saved);
-        } catch (e) {
-            kitchenOrders = []; // Start with empty array if error
-        }
-    } else {
-        kitchenOrders = []; // Start with empty array
-    }
-    renderKitchenOrders();
-}
-
-function saveKitchenOrders() {
-    localStorage.setItem('kitchenOrders', JSON.stringify(kitchenOrders));
-}
-
-function renderKitchenOrders() {
-    const container = document.getElementById('kitchen-orders');
-    if (!container) return;
+function updateInventoryFromOrder(order) {
+    if (!inventoryItems || inventoryItems.length === 0) return;
     
-    if (!kitchenOrders || kitchenOrders.length === 0) {
-        container.innerHTML = '<div class="loading">No active orders</div>';
-        updateKitchenBadges();
-        return;
-    }
+    // Load recipes from localStorage
+    const recipes = JSON.parse(localStorage.getItem('recipeIngredients') || '{}');
     
-    const sortedOrders = [...kitchenOrders].sort((a, b) => {
-        const statusOrder = { 'new': 0, 'preparing': 1, 'ready': 2, 'served': 3 };
-        if (statusOrder[a.status] !== statusOrder[b.status]) {
-            return statusOrder[a.status] - statusOrder[b.status];
-        }
-        return new Date(`1970/01/01 ${b.time}`) - new Date(`1970/01/01 ${a.time}`);
-    });
+    let inventoryUpdated = false;
+    let updatedItems = [];
     
-    updateKitchenBadges();
-    
-    container.innerHTML = sortedOrders.map(order => {
-        // Create a properly formatted order object for printing
-        const printOrder = {
-            id: order.id,
-            table: order.table_number === 'Takeout' ? 'takeout' : 
-                   order.table_number === 'Delivery' ? 'delivery' : 
-                   order.table_number.replace('Table ', ''),
-            items: order.items.map(item => ({
-                name: item.name,
-                quantity: item.quantity // Preserve the quantity
-            })),
-            staff: order.created_by
-        };
-        
-        // Convert to JSON string safely for onclick
-        const printOrderJson = JSON.stringify(printOrder).replace(/'/g, "\\'");
-        
-        return `
-        <div class="kitchen-order-card ${order.status}">
-            <div class="kitchen-order-header">
-                <span class="kitchen-order-table">${order.table_number}</span>
-                <span class="kitchen-order-time">${order.time}</span>
-            </div>
-            <div class="kitchen-order-items">
-                ${order.items.map(item => `
-                    <div class="kitchen-order-item">
-                        ${item.quantity}x ${item.name}
-                    </div>
-                `).join('')}
-            </div>
-            <div class="kitchen-order-footer">
-                <i class="fas fa-user"></i> Taken by: ${order.created_by || 'Unknown'}
-            </div>
-            <div class="kitchen-order-actions">
-                ${order.status === 'new' ? 
-                    `<button class="btn btn-secondary" onclick="updateOrderStatus(${order.id}, 'preparing')">Start Preparing</button>` : 
-                 order.status === 'preparing' ?
-                    `<button class="btn btn-primary" onclick="updateOrderStatus(${order.id}, 'ready')">Mark Ready</button>` :
-                 order.status === 'ready' ?
-                    `<button class="btn btn-success" onclick="updateOrderStatus(${order.id}, 'served')">Mark Served</button>` :
-                    `<span class="badge-success">✓ Served</span>`
-                }
-                <button class="btn btn-info" onclick='printKitchenTicket(${printOrderJson})' style="margin-left: 5px;">
-                    <i class="fas fa-print"></i> Print
-                </button>
-            </div>
-        </div>
-    `}).join('');
-}
-
-function updateKitchenBadges() {
-    const newCount = kitchenOrders.filter(o => o.status === 'new').length;
-    const preparingCount = kitchenOrders.filter(o => o.status === 'preparing').length;
-    const readyCount = kitchenOrders.filter(o => o.status === 'ready').length;
-    
-    document.getElementById('kitchen-badge').textContent = kitchenOrders.length;
-    document.getElementById('new-count').textContent = newCount;
-    document.getElementById('preparing-count').textContent = preparingCount;
-    document.getElementById('ready-count').textContent = readyCount;
-}
-
-function updateOrderStatus(orderId, newStatus) {
-    const orderIndex = kitchenOrders.findIndex(o => o.id === orderId);
-    
-    if (orderIndex === -1) {
-        showNotification('Order not found', 'error');
-        return;
-    }
-    
-    const order = kitchenOrders[orderIndex];
-    
-    const statusMessages = {
-        'preparing': 'started preparing',
-        'ready': 'is ready for serving',
-        'served': 'has been served'
-    };
-    
-    order.status = newStatus;
-    
-    if (newStatus === 'served') {
-        showNotification(`Order from ${order.table_number} has been served`, 'success');
-        
-        setTimeout(() => {
-            kitchenOrders.splice(orderIndex, 1);
-            renderKitchenOrders();
-            saveKitchenOrders();
-        }, 2000);
-    } else {
-        showNotification(`Order from ${order.table_number} ${statusMessages[newStatus] || 'updated'}`, 'success');
-    }
-    
-    renderKitchenOrders();
-    saveKitchenOrders();
-}
-
-function addOrderToKitchen(order, printTicket = false) {
-    let tableDisplay = order.table;
-    if (order.table === 'takeout') {
-        tableDisplay = 'Takeout';
-    } else if (order.table === 'delivery') {
-        tableDisplay = 'Delivery';
-    } else {
-        tableDisplay = `Table ${order.table}`;
-    }
-    
-    const itemMap = new Map();
+    // Count item quantities in the order
+    const itemCounts = new Map();
     order.items.forEach(item => {
-        if (itemMap.has(item.name)) {
-            itemMap.set(item.name, itemMap.get(item.name) + 1);
-        } else {
-            itemMap.set(item.name, 1);
-        }
+        const count = itemCounts.get(item.name) || 0;
+        itemCounts.set(item.name, count + 1);
     });
     
-    const groupedItems = Array.from(itemMap.entries()).map(([name, quantity]) => ({
-        name: name,
-        quantity: quantity
-    }));
+    itemCounts.forEach((count, itemName) => {
+        const ingredients = recipes[itemName];
+        if (!ingredients) return;
+        
+        ingredients.forEach(ingredient => {
+            const inventoryItem = inventoryItems.find(i => 
+                i.name.toLowerCase() === ingredient.name.toLowerCase()
+            );
+            
+            if (inventoryItem) {
+                const totalQuantity = ingredient.quantity * count;
+                const oldStock = inventoryItem.stock;
+                inventoryItem.stock = Math.max(0, inventoryItem.stock - totalQuantity);
+                
+                // Track which items were updated
+                if (!updatedItems.includes(inventoryItem.name)) {
+                    updatedItems.push(inventoryItem.name);
+                }
+                
+                // Update status
+                if (inventoryItem.stock <= 0) {
+                    inventoryItem.status = 'out';
+                } else if (inventoryItem.stock <= inventoryItem.reorder) {
+                    inventoryItem.status = 'low';
+                } else {
+                    inventoryItem.status = 'ok';
+                }
+                
+                // Record transaction
+                saveInventoryTransaction(inventoryItem, totalQuantity, 'sold', order.id);
+                inventoryUpdated = true;
+                
+                console.log(`Inventory updated: ${inventoryItem.name} - ${oldStock} → ${inventoryItem.stock} (used: ${totalQuantity})`);
+            }
+        });
+    });
     
-    const newOrder = {
-        id: order.id,
-        table_number: tableDisplay,
-        time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-        status: 'new',
-        created_by: currentUser ? currentUser.name : 'Unknown',
-        items: groupedItems
-    };
-    
-    kitchenOrders.unshift(newOrder);
-    renderKitchenOrders();
-    saveKitchenOrders();
-    
-    // Only print kitchen ticket if explicitly requested
-    if (printTicket) {
-        printKitchenTicket(order);
+    if (inventoryUpdated) {
+        // Save to localStorage
+        localStorage.setItem('inventoryItems', JSON.stringify(inventoryItems));
+        
+        // Re-render inventory with updated values
+        renderInventory(inventoryItems);
+        
+        // Update low stock alerts
+        updateLowStockAlerts();
+        
+        // Check for critical stock levels
+        checkLowStockAfterOrder(updatedItems);
+        
+        console.log('Inventory updated successfully. Total value:', calculateTotalInventoryValue());
     }
-    
-    showNotification(`New order added to kitchen (${tableDisplay})`, 'success');
 }
 
-function clearCompletedOrders() {
-    if (!hasPermission('staff') && !hasPermission('reports')) {
-        showNotification('Only managers can clear completed orders', 'error');
-        return;
+function checkLowStockAfterOrder(updatedItems = []) {
+    if (!inventoryItems) return;
+    
+    const lowStock = inventoryItems.filter(item => item.stock > 0 && item.stock <= item.reorder);
+    const outOfStock = inventoryItems.filter(item => item.stock <= 0);
+    
+    // Only show notifications for items that were actually affected by this order
+    const affectedLowStock = lowStock.filter(item => updatedItems.includes(item.name));
+    const affectedOutOfStock = outOfStock.filter(item => updatedItems.includes(item.name));
+    
+    // Show notifications for critical stock
+    if (affectedOutOfStock.length > 0) {
+        const items = affectedOutOfStock.map(i => i.name).join(', ');
+        showNotification(`⚠️ OUT OF STOCK: ${items}`, 'error');
+    } else if (affectedLowStock.length > 0) {
+        const items = affectedLowStock.map(i => i.name).join(', ');
+        showNotification(`⚠️ Low stock: ${items}`, 'warning');
+    }
+}
+
+function saveInventoryTransaction(item, quantity, type, orderId) {
+    const transaction = {
+        id: Date.now() + Math.random(),
+        itemId: item.id,
+        itemName: item.name,
+        quantity: quantity,
+        type: type,
+        orderId: orderId,
+        timestamp: new Date().toLocaleString(),
+        staff: currentUser ? currentUser.name : 'System'
+    };
+    
+    inventoryTransactions.unshift(transaction);
+    
+    // Keep only last 100 transactions
+    if (inventoryTransactions.length > 100) {
+        inventoryTransactions = inventoryTransactions.slice(0, 100);
     }
     
-    const beforeCount = kitchenOrders.length;
-    kitchenOrders = kitchenOrders.filter(o => o.status !== 'served');
-    const removedCount = beforeCount - kitchenOrders.length;
-    
-    renderKitchenOrders();
-    saveKitchenOrders();
-    
-    showNotification(removedCount > 0 ? `Cleared ${removedCount} completed orders` : 'No completed orders to clear', 'success');
+    localStorage.setItem('inventoryTransactions', JSON.stringify(inventoryTransactions));
 }
 
 // =============================================
@@ -1863,18 +2591,8 @@ function updateHourlyChart() {
     const ctx = canvas.getContext('2d');
     const period = document.getElementById('hourly-period')?.value || 'today';
     
-    // Get sales data from localStorage
-    let salesData = [];
-    try {
-        const saved = localStorage.getItem('dailySales');
-        if (saved) {
-            salesData = JSON.parse(saved);
-        }
-    } catch (e) {
-        console.error('Error loading sales data:', e);
-    }
+    let salesData = JSON.parse(localStorage.getItem('dailySales') || '[]');
     
-    // If no data, show empty chart
     if (salesData.length === 0) {
         canvas.style.display = 'none';
         return;
@@ -1882,20 +2600,48 @@ function updateHourlyChart() {
     
     canvas.style.display = 'block';
     
-    // Filter data based on selected period
     const now = new Date();
     const today = now.toLocaleDateString();
     const yesterday = new Date(now);
     yesterday.setDate(yesterday.getDate() - 1);
     const yesterdayStr = yesterday.toLocaleDateString();
     
+    // Get date for week and month ranges
+    const weekAgo = new Date(now);
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    
+    const monthAgo = new Date(now);
+    monthAgo.setDate(monthAgo.getDate() - 30);
+    
+    // Filter sales based on selected period
     let filteredSales = [];
+    let chartLabel = '';
+    
+    if (period === 'today') {
+        filteredSales = salesData.filter(sale => sale.date === today);
+        chartLabel = 'Today';
+    } else if (period === 'yesterday') {
+        filteredSales = salesData.filter(sale => sale.date === yesterdayStr);
+        chartLabel = 'Yesterday';
+    } else if (period === 'week') {
+        filteredSales = salesData.filter(sale => {
+            const saleDate = new Date(sale.timestamp);
+            return saleDate >= weekAgo;
+        });
+        chartLabel = 'This Week';
+    } else if (period === 'month') {
+        filteredSales = salesData.filter(sale => {
+            const saleDate = new Date(sale.timestamp);
+            return saleDate >= monthAgo;
+        });
+        chartLabel = 'This Month';
+    }
     
     // Create hour labels from 8 AM to 9 PM (14 hours)
     const hourLabels = [];
     const hourValues = [];
     for (let hour = 8; hour <= 21; hour++) {
-        const hourStr = hour <= 11 ? `${hour} AM` : hour === 12 ? `12 PM` : hour > 12 ? `${hour-12} PM` : `${hour} AM`;
+        const hourStr = hour <= 11 ? `${hour} AM` : hour === 12 ? `12 PM` : `${hour-12} PM`;
         hourLabels.push(hourStr);
         hourValues.push(hour);
     }
@@ -1903,19 +2649,11 @@ function updateHourlyChart() {
     // Initialize hourly data array with zeros
     const hourlyData = new Array(hourValues.length).fill(0);
     
-    if (period === 'today') {
-        // Filter for today's sales
-        filteredSales = salesData.filter(sale => sale.date === today);
-    } else if (period === 'yesterday') {
-        // Filter for yesterday's sales
-        filteredSales = salesData.filter(sale => sale.date === yesterdayStr);
-    }
-    
     // Aggregate sales by hour
     filteredSales.forEach(sale => {
         const saleHour = sale.hour || new Date(sale.timestamp).getHours();
         
-        // Find which hour bucket this belongs to (only include hours between 8 AM and 9 PM)
+        // Find which hour bucket this belongs to
         for (let i = 0; i < hourValues.length; i++) {
             if (saleHour === hourValues[i]) {
                 hourlyData[i] += sale.total;
@@ -1938,7 +2676,7 @@ function updateHourlyChart() {
         data: {
             labels: hourLabels,
             datasets: [{
-                label: `Sales (${period === 'today' ? 'Today' : 'Yesterday'})`,
+                label: `Sales (${chartLabel})`,
                 data: roundedData,
                 borderColor: '#3498db',
                 backgroundColor: 'rgba(52, 152, 219, 0.1)',
@@ -2001,18 +2739,8 @@ function updateCategoryChart() {
     const ctx = canvas.getContext('2d');
     const period = document.getElementById('category-period')?.value || 'today';
     
-    // Get sales data from localStorage
-    let salesData = [];
-    try {
-        const saved = localStorage.getItem('dailySales');
-        if (saved) {
-            salesData = JSON.parse(saved);
-        }
-    } catch (e) {
-        console.error('Error loading sales data:', e);
-    }
+    let salesData = JSON.parse(localStorage.getItem('dailySales') || '[]');
     
-    // If no data, show empty chart
     if (salesData.length === 0) {
         canvas.style.display = 'none';
         return;
@@ -2020,26 +2748,31 @@ function updateCategoryChart() {
     
     canvas.style.display = 'block';
     
-    // Filter data based on selected period
     const now = new Date();
     const today = now.toLocaleDateString();
     const weekAgo = new Date(now);
     weekAgo.setDate(weekAgo.getDate() - 7);
+    const monthAgo = new Date(now);
+    monthAgo.setDate(monthAgo.getDate() - 30);
     
     let filteredSales = [];
     let chartTitle = '';
     
     if (period === 'today') {
-        // Filter for today's sales
         filteredSales = salesData.filter(sale => sale.date === today);
         chartTitle = 'Today';
     } else if (period === 'week') {
-        // Filter for last 7 days
         filteredSales = salesData.filter(sale => {
             const saleDate = new Date(sale.timestamp);
             return saleDate >= weekAgo;
         });
         chartTitle = 'This Week';
+    } else if (period === 'month') {
+        filteredSales = salesData.filter(sale => {
+            const saleDate = new Date(sale.timestamp);
+            return saleDate >= monthAgo;
+        });
+        chartTitle = 'This Month';
     }
     
     // Define categories and their colors
@@ -2047,17 +2780,12 @@ function updateCategoryChart() {
     const colors = ['#3498db', '#27ae60', '#f39c12', '#e74c3c', '#9b59b6'];
     const categoryRevenue = [0, 0, 0, 0, 0];
     
-    // Define item to category mapping
-    const itemCategoryMap = {
-        'Classic Burger': 'Mains',
-        'Cheeseburger': 'Mains',
-        'Steak': 'Mains',
-        'Soda': 'Drinks',
-        'Chicken Wings': 'Appetizers',
-        'Caesar Salad': 'Appetizers',
-        'French Fries': 'Sides',
-        'Ice Cream': 'Desserts'
-    };
+    // Load menu items for category mapping
+    const menuItems = JSON.parse(localStorage.getItem('menuItems') || '[]');
+    const itemCategoryMap = {};
+    menuItems.forEach(item => {
+        itemCategoryMap[item.name] = item.category;
+    });
     
     // Aggregate revenue by category
     filteredSales.forEach(sale => {
@@ -2146,28 +2874,16 @@ function loadReports() {
     
     const period = document.getElementById('report-period')?.value || 'today';
     const data = getReportData(period);
-    renderReports(data, period);
+    renderReports(data);
 }
 
 function getReportData(period) {
-    // Get real sales data from localStorage
-    let salesData = [];
-    try {
-        const saved = localStorage.getItem('dailySales');
-        if (saved) {
-            salesData = JSON.parse(saved);
-        }
-    } catch (e) {
-        console.error('Error loading sales data:', e);
-    }
+    let salesData = JSON.parse(localStorage.getItem('dailySales') || '[]');
     
     const now = new Date();
     const today = now.toLocaleDateString();
-    
-    // Calculate date ranges
     const weekAgo = new Date(now);
     weekAgo.setDate(weekAgo.getDate() - 7);
-    
     const monthAgo = new Date(now);
     monthAgo.setDate(monthAgo.getDate() - 30);
     
@@ -2175,18 +2891,15 @@ function getReportData(period) {
     let periodTitle = '';
     
     if (period === 'today') {
-        // Filter for today's sales
         filteredSales = salesData.filter(sale => sale.date === today);
         periodTitle = 'Today';
     } else if (period === 'week') {
-        // Filter for last 7 days
         filteredSales = salesData.filter(sale => {
             const saleDate = new Date(sale.timestamp);
             return saleDate >= weekAgo;
         });
         periodTitle = 'This Week';
     } else if (period === 'month') {
-        // Filter for last 30 days
         filteredSales = salesData.filter(sale => {
             const saleDate = new Date(sale.timestamp);
             return saleDate >= monthAgo;
@@ -2219,17 +2932,12 @@ function getReportData(period) {
     const totalOrders = filteredSales.length;
     const avgOrderValue = totalOrders > 0 ? totalSales / totalOrders : 0;
     
-    // Calculate category revenue
-    const itemCategoryMap = {
-        'Classic Burger': 'Mains',
-        'Cheeseburger': 'Mains',
-        'Steak': 'Mains',
-        'Soda': 'Drinks',
-        'Chicken Wings': 'Appetizers',
-        'Caesar Salad': 'Appetizers',
-        'French Fries': 'Sides',
-        'Ice Cream': 'Desserts'
-    };
+    // Load menu items for category mapping
+    const menuItems = JSON.parse(localStorage.getItem('menuItems') || '[]');
+    const itemCategoryMap = {};
+    menuItems.forEach(item => {
+        itemCategoryMap[item.name] = item.category;
+    });
     
     const categoryRevenue = {
         'Mains': 0,
@@ -2297,7 +3005,7 @@ function getReportData(period) {
     };
 }
 
-function renderReports(data, period) {
+function renderReports(data) {
     const reportDiv = document.getElementById('report-data');
     if (!reportDiv) return;
     
@@ -2313,170 +3021,7 @@ function renderReports(data, period) {
         return;
     }
     
-    // Beautiful report HTML with styled tables for dashboard view
     let html = `
-        <style>
-            .report-container {
-                display: flex;
-                flex-direction: column;
-                gap: 25px;
-            }
-            
-            .report-card {
-                background: white;
-                border-radius: 12px;
-                padding: 20px;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-                border: 1px solid #e0e0e0;
-            }
-            
-            .report-card h3 {
-                margin: 0 0 20px 0;
-                color: #2c3e50;
-                font-size: 1.3rem;
-                font-weight: 600;
-                padding-bottom: 10px;
-                border-bottom: 2px solid #3498db;
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-            }
-            
-            .period-badge {
-                background: #3498db;
-                color: white;
-                padding: 5px 15px;
-                border-radius: 20px;
-                font-size: 0.9rem;
-                font-weight: normal;
-            }
-            
-            .stats-grid {
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-                gap: 20px;
-            }
-            
-            .stat-item {
-                background: #f8f9fa;
-                padding: 20px;
-                border-radius: 10px;
-                text-align: center;
-                border-left: 4px solid #3498db;
-            }
-            
-            .stat-label {
-                color: #7f8c8d;
-                font-size: 0.9rem;
-                margin-bottom: 8px;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-            }
-            
-            .stat-value {
-                color: #2c3e50;
-                font-size: 1.8rem;
-                font-weight: 700;
-            }
-            
-            .stat-value.sales {
-                color: #27ae60;
-            }
-            
-            .stat-value.orders {
-                color: #3498db;
-            }
-            
-            .stat-value.avg {
-                color: #e67e22;
-            }
-            
-            .report-table {
-                width: 100%;
-                border-collapse: collapse;
-                background: white;
-                border-radius: 10px;
-                overflow: hidden;
-            }
-            
-            .report-table thead {
-                background: linear-gradient(135deg, #2c3e50, #3498db);
-                color: white;
-            }
-            
-            .report-table th {
-                padding: 15px;
-                text-align: left;
-                font-weight: 600;
-                font-size: 0.95rem;
-                letter-spacing: 0.5px;
-            }
-            
-            .report-table td {
-                padding: 12px 15px;
-                border-bottom: 1px solid #e0e0e0;
-            }
-            
-            .report-table tbody tr:hover {
-                background-color: #f5f9ff;
-                transition: background-color 0.2s;
-            }
-            
-            .report-table tbody tr:last-child td {
-                border-bottom: none;
-            }
-            
-            .category-badge {
-                display: inline-block;
-                padding: 4px 12px;
-                border-radius: 20px;
-                font-size: 0.85rem;
-                font-weight: 500;
-            }
-            
-            .badge-mains { background: #3498db20; color: #2980b9; }
-            .badge-drinks { background: #27ae6020; color: #27ae60; }
-            .badge-appetizers { background: #f39c1220; color: #e67e22; }
-            .badge-sides { background: #e74c3c20; color: #c0392b; }
-            .badge-desserts { background: #9b59b620; color: #8e44ad; }
-            
-            .revenue-positive {
-                color: #27ae60;
-                font-weight: 600;
-            }
-            
-            .percentage-bar {
-                display: inline-block;
-                width: 50px;
-                height: 6px;
-                background: #ecf0f1;
-                border-radius: 3px;
-                margin-left: 10px;
-                vertical-align: middle;
-            }
-            
-            .percentage-fill {
-                height: 100%;
-                background: #3498db;
-                border-radius: 3px;
-            }
-            
-            .top-item-rank {
-                display: inline-block;
-                width: 30px;
-                height: 30px;
-                border-radius: 50%;
-                text-align: center;
-                line-height: 30px;
-                font-weight: 700;
-                margin-right: 10px;
-            }
-            
-            .rank-1 { background: #f1c40f; color: white; }
-            .rank-2 { background: #bdc3c7; color: white; }
-            .rank-3 { background: #e67e22; color: white; }
-        </style>
-        
         <div class="report-container">
             <!-- Summary Cards -->
             <div class="report-card">
@@ -2513,30 +3058,27 @@ function renderReports(data, period) {
                         </tr>
                     </thead>
                     <tbody>
-                        ${data.by_category.map((cat, index) => {
-                            const badgeClass = 
-                                cat.category === 'Mains' ? 'badge-mains' :
-                                cat.category === 'Drinks' ? 'badge-drinks' :
-                                cat.category === 'Appetizers' ? 'badge-appetizers' :
-                                cat.category === 'Sides' ? 'badge-sides' : 'badge-desserts';
-                            
-                            const percentage = data.summary.total_sales > 0 ? ((cat.revenue / data.summary.total_sales) * 100).toFixed(1) : 0;
-                            
-                            return `
-                                <tr>
-                                    <td>
-                                        <span class="category-badge ${badgeClass}">${cat.category}</span>
-                                    </td>
-                                    <td class="revenue-positive">$${cat.revenue.toFixed(2)}</td>
-                                    <td><strong>${percentage}%</strong></td>
-                                    <td>
-                                        <div class="percentage-bar">
-                                            <div class="percentage-fill" style="width: ${percentage}%"></div>
-                                        </div>
-                                    </td>
-                                </tr>
-                            `;
-                        }).join('')}
+    `;
+    
+    data.by_category.forEach((cat) => {
+        let badgeClass = 'badge-mains';
+        if (cat.category === 'Mains') badgeClass = 'badge-mains';
+        else if (cat.category === 'Drinks') badgeClass = 'badge-drinks';
+        else if (cat.category === 'Appetizers') badgeClass = 'badge-appetizers';
+        else if (cat.category === 'Sides') badgeClass = 'badge-sides';
+        else if (cat.category === 'Desserts') badgeClass = 'badge-desserts';
+        
+        const percentage = data.summary.total_sales > 0 ? ((cat.revenue / data.summary.total_sales) * 100).toFixed(1) : 0;
+        
+        html += '<tr>';
+        html += '<td><span class="category-badge ' + badgeClass + '">' + cat.category + '</span></td>';
+        html += '<td class="revenue-positive">$' + cat.revenue.toFixed(2) + '</td>';
+        html += '<td><strong>' + percentage + '%</strong></td>';
+        html += '<td><div class="percentage-bar"><div class="percentage-fill" style="width: ' + percentage + '%"></div></div></td>';
+        html += '</tr>';
+    });
+    
+    html += `
                     </tbody>
                 </table>
             </div>
@@ -2554,16 +3096,18 @@ function renderReports(data, period) {
                         </tr>
                     </thead>
                     <tbody>
-                        ${data.top_items.map((item, index) => `
-                            <tr>
-                                <td>
-                                    <span class="top-item-rank rank-${index + 1}">${index + 1}</span>
-                                </td>
-                                <td><strong>${item.name}</strong></td>
-                                <td>${item.quantity_sold}</td>
-                                <td class="revenue-positive">$${item.revenue.toFixed(2)}</td>
-                            </tr>
-                        `).join('')}
+    `;
+    
+    data.top_items.forEach((item, index) => {
+        html += '<tr>';
+        html += '<td><span class="top-item-rank rank-' + (index + 1) + '">' + (index + 1) + '</span></td>';
+        html += '<td><strong>' + item.name + '</strong></td>';
+        html += '<td>' + item.quantity_sold + '</td>';
+        html += '<td class="revenue-positive">$' + item.revenue.toFixed(2) + '</td>';
+        html += '</tr>';
+    });
+    
+    html += `
                     </tbody>
                 </table>
             </div>
@@ -2575,300 +3119,65 @@ function renderReports(data, period) {
 
 function exportReport() {
     if (!hasPermission('reports')) {
-        showNotification('You don\'t have permission to export reports', 'error');
+        showNotification('Access denied', 'error');
         return;
     }
     
-    const period = document.getElementById('report-period')?.value || 'today';
+    const period = document.getElementById('report-period').value;
     const data = getReportData(period);
     
-    printDailyReport(data, period);
-    showNotification(`Report for ${period} sent to printer`, 'success');
-}
-
-function printDailyReport(reportData, period) {
-    // Check if there's data
-    if (reportData.summary.total_sales === 0) {
-        showNotification('No data to export for this period', 'warning');
-        return;
-    }
-    
-    const periodTitle = period === 'today' ? 'Today' : period === 'week' ? 'This Week' : 'This Month';
-    
-    // Beautifully formatted exported version - professional and clean
     const reportContent = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Sales Report - ${periodTitle}</title>
-            <style>
-                body {
-                    font-family: 'Helvetica', 'Arial', sans-serif;
-                    margin: 0;
-                    padding: 20px;
-                    background: #fff;
-                    color: #333;
-                }
-                .report-container {
-                    max-width: 800px;
-                    margin: 0 auto;
-                    background: white;
-                    padding: 30px;
-                    box-shadow: 0 0 20px rgba(0,0,0,0.1);
-                    border-radius: 10px;
-                }
-                .header {
-                    text-align: center;
-                    margin-bottom: 30px;
-                    padding-bottom: 20px;
-                    border-bottom: 3px solid #2c3e50;
-                }
-                .header h1 {
-                    color: #2c3e50;
-                    margin: 0;
-                    font-size: 28px;
-                    font-weight: 600;
-                }
-                .header h2 {
-                    color: #7f8c8d;
-                    margin: 5px 0 0;
-                    font-size: 16px;
-                    font-weight: normal;
-                }
-                .header .date {
-                    color: #3498db;
-                    font-size: 14px;
-                    margin-top: 10px;
-                }
-                .summary-section {
-                    background: #f8f9fa;
-                    border-radius: 10px;
-                    padding: 20px;
-                    margin-bottom: 30px;
-                    border-left: 5px solid #3498db;
-                }
-                .summary-title {
-                    font-size: 18px;
-                    font-weight: 600;
-                    color: #2c3e50;
-                    margin: 0 0 15px 0;
-                    text-transform: uppercase;
-                    letter-spacing: 1px;
-                }
-                .summary-grid {
-                    display: grid;
-                    grid-template-columns: repeat(3, 1fr);
-                    gap: 20px;
-                }
-                .summary-item {
-                    text-align: center;
-                }
-                .summary-label {
-                    color: #7f8c8d;
-                    font-size: 12px;
-                    text-transform: uppercase;
-                    margin-bottom: 5px;
-                }
-                .summary-value {
-                    font-size: 24px;
-                    font-weight: bold;
-                }
-                .summary-value.sales { color: #27ae60; }
-                .summary-value.orders { color: #3498db; }
-                .summary-value.avg { color: #e67e22; }
-                
-                .section {
-                    margin-bottom: 30px;
-                }
-                .section-title {
-                    font-size: 18px;
-                    font-weight: 600;
-                    color: #2c3e50;
-                    margin: 0 0 15px 0;
-                    padding-bottom: 10px;
-                    border-bottom: 2px solid #3498db;
-                }
-                table {
-                    width: 100%;
-                    border-collapse: collapse;
-                    background: white;
-                    border-radius: 8px;
-                    overflow: hidden;
-                    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-                }
-                th {
-                    background: #34495e;
-                    color: white;
-                    font-weight: 600;
-                    padding: 12px;
-                    text-align: left;
-                    font-size: 14px;
-                }
-                td {
-                    padding: 10px 12px;
-                    border-bottom: 1px solid #ecf0f1;
-                }
-                tr:last-child td {
-                    border-bottom: none;
-                }
-                tr:nth-child(even) {
-                    background: #f8f9fa;
-                }
-                .category-row td:first-child {
-                    font-weight: 500;
-                }
-                .amount {
-                    font-weight: 600;
-                    color: #27ae60;
-                }
-                .footer {
-                    margin-top: 40px;
-                    padding-top: 20px;
-                    border-top: 2px dashed #bdc3c7;
-                    text-align: center;
-                    color: #7f8c8d;
-                    font-size: 12px;
-                }
-                .footer p {
-                    margin: 5px 0;
-                }
-                .print-button {
-                    display: block;
-                    width: 200px;
-                    margin: 20px auto;
-                    padding: 12px 24px;
-                    background: #3498db;
-                    color: white;
-                    border: none;
-                    border-radius: 5px;
-                    font-size: 16px;
-                    cursor: pointer;
-                    text-align: center;
-                    text-decoration: none;
-                }
-                .print-button:hover {
-                    background: #2980b9;
-                }
-                @media print {
-                    .print-button {
-                        display: none;
-                    }
-                    body {
-                        padding: 0;
-                        background: white;
-                    }
-                    .report-container {
-                        box-shadow: none;
-                        padding: 15px;
-                    }
-                }
-            </style>
-        </head>
-        <body>
-            <div class="report-container">
-                <div class="header">
-                    <h1>🍔 RESTAURANT POS</h1>
-                    <h2>Sales Report - ${periodTitle}</h2>
-                    <div class="date">Generated on: ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}</div>
-                </div>
-                
-                <div class="summary-section">
-                    <div class="summary-title">Executive Summary</div>
-                    <div class="summary-grid">
-                        <div class="summary-item">
-                            <div class="summary-label">Total Sales</div>
-                            <div class="summary-value sales">$${reportData.summary.total_sales.toFixed(2)}</div>
-                        </div>
-                        <div class="summary-item">
-                            <div class="summary-label">Total Orders</div>
-                            <div class="summary-value orders">${reportData.summary.total_orders}</div>
-                        </div>
-                        <div class="summary-item">
-                            <div class="summary-label">Average Order</div>
-                            <div class="summary-value avg">$${reportData.summary.avg_order_value.toFixed(2)}</div>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="section">
-                    <div class="section-title">📊 Sales by Category</div>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Category</th>
-                                <th>Revenue</th>
-                                <th>Percentage</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${reportData.by_category.map(cat => {
-                                const percentage = reportData.summary.total_sales > 0 ? ((cat.revenue / reportData.summary.total_sales) * 100).toFixed(1) : 0;
-                                return `
-                                    <tr class="category-row">
-                                        <td><strong>${cat.category}</strong></td>
-                                        <td class="amount">$${cat.revenue.toFixed(2)}</td>
-                                        <td>${percentage}%</td>
-                                    </tr>
-                                `;
-                            }).join('')}
-                            <tr style="background: #ecf0f1; font-weight: bold;">
-                                <td>TOTAL</td>
-                                <td class="amount">$${reportData.summary.total_sales.toFixed(2)}</td>
-                                <td>100%</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-                
-                <div class="section">
-                    <div class="section-title">🏆 Top Selling Items</div>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Rank</th>
-                                <th>Item</th>
-                                <th>Quantity Sold</th>
-                                <th>Revenue</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${reportData.top_items.map((item, index) => `
-                                <tr>
-                                    <td><strong>#${index + 1}</strong></td>
-                                    <td>${item.name}</td>
-                                    <td>${item.quantity_sold}</td>
-                                    <td class="amount">$${item.revenue.toFixed(2)}</td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                </div>
-                
-                <div class="footer">
-                    <p>Thank you for using Restaurant POS System</p>
-                    <p>123 Main Street, City | Tel: (555) 123-4567</p>
-                    <p>This report was generated automatically. For questions, please contact management.</p>
-                </div>
-                
-                <button class="print-button" onclick="window.print()">🖨️ Print Report</button>
-            </div>
-            
-            <script>
-                // Auto-print when window loads (optional - comment out if not wanted)
-                // window.onload = function() { setTimeout(function() { window.print(); }, 500); };
-            <\/script>
-        </body>
-        </html>
+        SALES REPORT - ${data.period_title}
+        Generated: ${new Date().toLocaleString()}
+        
+        SUMMARY
+        Total Sales: $${data.summary.total_sales.toFixed(2)}
+        Total Orders: ${data.summary.total_orders}
+        Average Order: $${data.summary.avg_order_value.toFixed(2)}
+        
+        SALES BY CATEGORY
+        ${data.by_category.map(c => `${c.category}: $${c.revenue.toFixed(2)}`).join('\n')}
+        
+        TOP ITEMS
+        ${data.top_items.map((item, i) => `${i+1}. ${item.name} - ${item.quantity_sold} sold - $${item.revenue.toFixed(2)}`).join('\n')}
     `;
     
-    // Open print window with the beautifully formatted report
-    const printWindow = window.open('', '_blank', 'width=900,height=700');
-    if (printWindow) {
-        printWindow.document.write(reportContent);
-        printWindow.document.close();
-    } else {
-        showNotification('Please allow popups to print the report', 'warning');
-    }
+    const blob = new Blob([reportContent], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `sales-report-${data.period_title.toLowerCase()}-${new Date().toISOString().split('T')[0]}.txt`;
+    a.click();
+    
+    showNotification('Report exported', 'success');
+}
+
+// =============================================
+// DEBUG FUNCTIONS
+// =============================================
+
+function debugUserPermissions() {
+    console.log('Current User:', currentUser);
+    console.log('Has manageUsers permission:', hasPermission('manageUsers'));
+    console.log('All permissions:', currentUser?.permissions);
+    
+    // Show all users in storage
+    const users = JSON.parse(localStorage.getItem('users') || '[]');
+    console.log('All users:', users);
+    
+    // Check if settings nav is visible
+    const settingsNav = document.getElementById('nav-settings');
+    console.log('Settings nav visible:', settingsNav ? settingsNav.style.display !== 'none' : 'not found');
+    
+    showNotification('Check console for debug info (F12)', 'info');
+}
+
+function debugRestaurantInfo() {
+    const info = JSON.parse(localStorage.getItem('restaurantInfo') || '{}');
+    console.log('Saved restaurant info:', info);
+    console.log('Current sidebar name:', document.getElementById('restaurant-name-display')?.textContent);
+    console.log('Current login name:', document.getElementById('login-restaurant-name')?.textContent);
+    showNotification('Check console for debug info', 'info');
 }
 
 // =============================================
@@ -2877,15 +3186,9 @@ function printDailyReport(reportData, period) {
 
 function updateDateTime() {
     const now = new Date();
-    const datetimeEl = document.getElementById('current-datetime');
-    if (datetimeEl) {
-        datetimeEl.textContent = now.toLocaleString('en-US', { 
-            hour: '2-digit', 
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: true
-        });
-    }
+    document.getElementById('current-datetime').textContent = now.toLocaleString('en-US', { 
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true 
+    });
 }
 
 function showNotification(message, type = 'info') {
@@ -2907,7 +3210,7 @@ function showNotification(message, type = 'info') {
         background: white;
         border-radius: 8px;
         box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-        z-index: 3000;
+        z-index: 20000;
         animation: slideIn 0.3s;
         border-left: 4px solid ${type === 'success' ? '#27ae60' : type === 'error' ? '#e74c3c' : '#3498db'};
         display: flex;
@@ -2920,18 +3223,53 @@ function showNotification(message, type = 'info') {
     setTimeout(() => notification.remove(), 3000);
 }
 
-// Add notification animation style
+// Add styles
 const style = document.createElement('style');
 style.textContent = `
     @keyframes slideIn {
-        from {
-            transform: translateX(100%);
-            opacity: 0;
-        }
-        to {
-            transform: translateX(0);
-            opacity: 1;
-        }
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+    }
+    
+    .btn-sm {
+        padding: 5px 10px;
+        font-size: 12px;
+        border-radius: 4px;
+        border: none;
+        cursor: pointer;
+    }
+    
+    .delete-btn {
+        background: #ffebee;
+        color: #e74c3c;
+        border: 1px solid #ffcdd2;
+        padding: 5px 10px;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    
+    .delete-btn:hover {
+        background: #e74c3c;
+        color: white;
+    }
+    
+    .action-buttons {
+        display: flex;
+        gap: 5px;
+    }
+    
+    .warning-icon {
+        color: #e74c3c;
+        margin-right: 5px;
+        font-size: 14px;
+    }
+    
+    .inventory-suggestions {
+        margin-bottom: 20px;
+        padding: 15px;
+        background: #e8f4fd;
+        border-radius: 8px;
+        border-left: 4px solid #3498db;
     }
 `;
 document.head.appendChild(style);

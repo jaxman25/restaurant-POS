@@ -190,15 +190,9 @@ body {
     border-bottom: 1px solid rgba(255,255,255,0.1);
 }
 
-.dashboard-logo{
-    width: 70px;
-    height: 70px;
-    object-fit: contain;
-}
-
 .logo-text{
     font-weight: bold;
-    font-size: 26px;
+    font-size: 24px;
 }
 
 .nav-menu {
