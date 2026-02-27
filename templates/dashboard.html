@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Restaurant POS Dashboard</title>
+    <title>Sunset Eats Point of Sale System</title>
     <link rel="stylesheet" href="/static/css/dashboard.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -13,8 +13,7 @@
     <div id="login-screen" class="login-screen">
         <div class="login-box">
             <div class="login-header">
-                <i class="fas fa-utensils"></i>
-                <h2>Restaurant POS</h2>
+                <h2>Sunset Eats</h2>
                 <p>Enter your 4-digit PIN</p>
             </div>
             
@@ -54,8 +53,8 @@
             <!-- Sidebar -->
             <aside class="sidebar">
                 <div class="logo">
-                    <i class="fas fa-utensils"></i>
-                    <span>Restaurant POS</span>
+                    <img src="{{ url_for('static', filename='logo.png') }}" alt="Sunset Logo" class="dashboard-logo">
+                    <span class="logo-text">Sunset Eats</span>
                 </div>
                 
                 <nav class="nav-menu">
@@ -112,34 +111,34 @@
 
                 <!-- Overview Tab -->
                 <div id="overview-tab" class="tab-content active" role="tabpanel">
-                    <!-- KPI Cards -->
+                    <!-- KPI Cards - All demo values removed, will be populated by JS -->
                     <div class="kpi-grid">
                         <div class="kpi-card">
                             <div class="kpi-icon" aria-hidden="true"><i class="fas fa-dollar-sign"></i></div>
                             <div class="kpi-info">
                                 <div class="kpi-label">Today's Sales</div>
-                                <div class="kpi-value" id="today-sales">$2,450.75</div>
+                                <div class="kpi-value" id="today-sales">$0.00</div>
                             </div>
                         </div>
                         <div class="kpi-card">
                             <div class="kpi-icon" aria-hidden="true"><i class="fas fa-shopping-bag"></i></div>
                             <div class="kpi-info">
                                 <div class="kpi-label">Orders Today</div>
-                                <div class="kpi-value" id="today-orders">42</div>
+                                <div class="kpi-value" id="today-orders">0</div>
                             </div>
                         </div>
                         <div class="kpi-card">
                             <div class="kpi-icon" aria-hidden="true"><i class="fas fa-users"></i></div>
                             <div class="kpi-info">
                                 <div class="kpi-label">Active Tables</div>
-                                <div class="kpi-value" id="active-tables">5/8</div>
+                                <div class="kpi-value" id="active-tables">0/8</div>
                             </div>
                         </div>
                         <div class="kpi-card">
                             <div class="kpi-icon" aria-hidden="true"><i class="fas fa-chart-line"></i></div>
                             <div class="kpi-info">
                                 <div class="kpi-label">Avg Order Value</div>
-                                <div class="kpi-value" id="avg-order">$58.35</div>
+                                <div class="kpi-value" id="avg-order">$0.00</div>
                             </div>
                         </div>
                     </div>
@@ -191,7 +190,7 @@
                                         </tr>
                                     </thead>
                                     <tbody id="top-items-body">
-                                        <tr><td colspan="3" class="loading">Loading...</td></tr>
+                                        <tr><td colspan="3" class="loading">No sales data yet. Complete a sale to see top items.</td></tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -201,7 +200,7 @@
                                 <h3 id="low-stock-title">Low Stock Alerts</h3>
                             </div>
                             <div class="card-body" id="low-stock-alerts" aria-labelledby="low-stock-title">
-                                <div class="loading">Loading...</div>
+                                <div class="loading">Loading inventory data...</div>
                             </div>
                         </div>
                     </div>
@@ -291,20 +290,27 @@
                     <div class="kitchen-grid" id="kitchen-orders" aria-label="Active kitchen orders"></div>
                 </div>
 
-                <!-- Inventory Tab -->
+                <!-- Inventory Tab - UPDATED with Add Item button -->
                 <div id="inventory-tab" class="tab-content" role="tabpanel">
                     <div class="inventory-header">
                         <h2 id="inventory-title">Inventory Management</h2>
-                        <button class="btn btn-primary" onclick="showReceiveStockModal()" aria-label="Receive new stock" id="receive-stock-btn">Receive Stock</button>
+                        <div class="inventory-header-actions">
+                            <button class="btn btn-secondary" onclick="showAddInventoryModal()" aria-label="Add new inventory item" id="add-item-btn">
+                                <i class="fas fa-plus"></i> Add Item
+                            </button>
+                            <button class="btn btn-primary" onclick="showReceiveStockModal()" aria-label="Receive new stock" id="receive-stock-btn">
+                                <i class="fas fa-truck"></i> Receive Stock
+                            </button>
+                        </div>
                     </div>
                     
                     <div class="inventory-stats" aria-label="Inventory statistics">
                         <div class="stat-card">
-                            <div class="stat-value" id="total-inventory-value">$12,500</div>
+                            <div class="stat-value" id="total-inventory-value">$0.00</div>
                             <div class="stat-label">Total Value</div>
                         </div>
                         <div class="stat-card warning">
-                            <div class="stat-value" id="low-stock-count">3</div>
+                            <div class="stat-value" id="low-stock-count">0</div>
                             <div class="stat-label">Low Stock</div>
                         </div>
                     </div>
@@ -503,6 +509,48 @@
                     <input type="number" id="receive-quantity" class="form-control" placeholder="Quantity" aria-label="Quantity to receive">
                 </div>
                 <button class="btn btn-primary" onclick="receiveStock()" aria-label="Receive stock">Receive Stock</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- NEW: Add Inventory Item Modal -->
+    <div id="add-inventory-modal" class="modal" role="dialog" aria-labelledby="add-modal-title" aria-modal="true">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="add-modal-title">Add Inventory Item</h3>
+                <button class="close" onclick="closeAddInventoryModal()" aria-label="Close modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="new-item-name">Item Name</label>
+                    <input type="text" id="new-item-name" class="form-control" placeholder="e.g., Beef Patty" aria-label="Item name">
+                </div>
+                <div class="form-group">
+                    <label for="new-item-unit">Unit</label>
+                    <select id="new-item-unit" class="form-control" aria-label="Unit of measurement">
+                        <option value="each">Each</option>
+                        <option value="lbs">Pounds (lbs)</option>
+                        <option value="oz">Ounces (oz)</option>
+                        <option value="gallon">Gallons</option>
+                        <option value="head">Head</option>
+                        <option value="slice">Slice</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="new-item-reorder">Reorder Level</label>
+                    <input type="number" id="new-item-reorder" class="form-control" placeholder="e.g., 20" min="1" aria-label="Reorder level">
+                </div>
+                <div class="form-group">
+                    <label for="new-item-cost">Cost per Unit ($)</label>
+                    <div class="input-group">
+                        <span class="input-group-text">$</span>
+                        <input type="number" id="new-item-cost" class="form-control" step="0.01" min="0.01" placeholder="0.00" aria-label="Cost per unit">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeAddInventoryModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="addInventoryItem()">Add Item</button>
             </div>
         </div>
     </div>

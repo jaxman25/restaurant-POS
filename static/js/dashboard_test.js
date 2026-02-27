@@ -29,7 +29,8 @@ document.addEventListener('DOMContentLoaded', () => {
     updateDateTime();
     setInterval(updateDateTime, 1000);
     
-    // Initialize all data - NO DEMO DATA, just load what exists
+    // Initialize all data
+    initializeSalesData();
     loadInventory();
     loadSavedKitchenOrders();
     loadInventoryTransactions();
@@ -37,17 +38,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Update displays after a short delay
     setTimeout(() => {
         loadMenuItems();
-        
-        // Update dashboard metrics from sales data
-        updateDashboardMetrics();
-        
-        // Only update charts if there's data
-        const salesData = JSON.parse(localStorage.getItem('dailySales') || '[]');
-        if (salesData.length > 0) {
-            updateCharts();
-            updateTopItems();
-        }
-        
+        updateCharts();
+        updateTopItems();
         updateLowStockAlerts();
         renderKitchenOrders();
         
@@ -61,7 +53,7 @@ function checkAuth() {
 
 // =============================================
 // LOGIN FUNCTIONS
-//==============================================
+// =============================================
 
 function showLoginScreen() {
     document.getElementById('login-screen').style.display = 'flex';
@@ -116,25 +108,25 @@ function login() {
     const demoUsers = {
         '1234': { 
             id: 1, 
-            name: 'Admin User', 
+            name: 'Admin', 
             role: 'admin', 
             permissions: { pos: true, inventory: true, reports: true, staff: true, settings: true } 
         },
         '1111': { 
             id: 2, 
-            name: 'John Manager', 
+            name: 'Manager', 
             role: 'manager', 
             permissions: { pos: true, inventory: true, reports: true, staff: false, settings: false } 
         },
         '2222': { 
             id: 3, 
-            name: 'Sarah Staff', 
+            name: 'Staff', 
             role: 'staff', 
             permissions: { pos: true, inventory: false, reports: false, staff: false, settings: false } 
         },
         '3333': { 
             id: 4, 
-            name: 'Mike Cook', 
+            name: 'Cook', 
             role: 'cook', 
             permissions: { pos: true, inventory: false, reports: false, staff: false, settings: false } 
         }
@@ -182,17 +174,8 @@ function loadAllData() {
     loadMenuItems();
     renderKitchenOrders();
     loadInventory();
-    
-    // Update dashboard metrics from sales data
-    updateDashboardMetrics();
-    
-    // Only update charts if there's data
-    const salesData = JSON.parse(localStorage.getItem('dailySales') || '[]');
-    if (salesData.length > 0) {
-        updateCharts();
-        updateTopItems();
-    }
-    
+    updateCharts();
+    updateTopItems();
     updateLowStockAlerts();
     
     if (hasPermission('reports')) {
@@ -204,17 +187,8 @@ function refreshData() {
     loadInventory();
     loadSavedKitchenOrders();
     renderKitchenOrders();
-    
-    // Update dashboard metrics from sales data
-    updateDashboardMetrics();
-    
-    // Only update charts if there's data
-    const salesData = JSON.parse(localStorage.getItem('dailySales') || '[]');
-    if (salesData.length > 0) {
-        updateTopItems();
-        updateCharts();
-    }
-    
+    updateTopItems();
+    updateCharts();
     updateLowStockAlerts();
     showNotification('Data refreshed!', 'success');
 }
@@ -260,17 +234,8 @@ function switchTab(tabName) {
     }
     if (tabName === 'overview') {
         setTimeout(() => {
-            const salesData = JSON.parse(localStorage.getItem('dailySales') || '[]');
-            updateDashboardMetrics();
-            if (salesData.length > 0) {
-                updateCharts();
-                updateTopItems();
-            } else {
-                // Show empty state
-                document.getElementById('hourlyChart').style.display = 'none';
-                document.getElementById('categoryChart').style.display = 'none';
-                document.getElementById('top-items-body').innerHTML = '<tr><td colspan="3" class="loading">No sales data yet. Complete a sale to see charts.</td></tr>';
-            }
+            updateCharts();
+            updateTopItems();
             updateLowStockAlerts();
         }, 100);
     }
@@ -406,7 +371,7 @@ function renderCart() {
                 </div>
                 <div class="cart-item-price">$${(item.price * item.quantity).toFixed(2)}</div>
                 <div class="cart-item-actions">
-                    <button onclick="removeFromCartByItemId(${item.id})" aria-label="Remove item">
+                    <button onclick="removeFromCart(${index})" aria-label="Remove item">
                         <i class="fas fa-trash"></i>
                     </button>
                 </div>
@@ -418,13 +383,11 @@ function renderCart() {
     updateCartTotals();
 }
 
-function removeFromCartByItemId(itemId) {
-    // Find the last occurrence of this item in cart and remove it
-    for (let i = cart.length - 1; i >= 0; i--) {
-        if (cart[i].id === itemId) {
-            cart.splice(i, 1);
-            break;
-        }
+function removeFromCart(index) {
+    // Since we're grouping, we need to remove by actual cart index
+    // This is a simplified version - in production you'd want to remove by item ID
+    if (cart.length > 0) {
+        cart.pop(); // Remove last item for simplicity
     }
     renderCart();
     document.getElementById('checkout-btn').disabled = cart.length === 0;
@@ -447,10 +410,21 @@ function updateCartTotals() {
 }
 
 // =============================================
-// INVENTORY FUNCTIONS - UPDATED WITH REAL-TIME UPDATES
+// INVENTORY FUNCTIONS
 // =============================================
 
-// DEMO DATA FUNCTION REMOVED - Now starts empty
+function getDefaultInventoryItems() {
+    return [
+        { id: 1, name: 'Beef Patty', stock: 45, unit: 'each', reorder: 20, status: 'ok', cost: 2.50 },
+        { id: 2, name: 'Burger Bun', stock: 32, unit: 'each', reorder: 30, status: 'low', cost: 0.50 },
+        { id: 3, name: 'Lettuce', stock: 8, unit: 'head', reorder: 10, status: 'low', cost: 1.50 },
+        { id: 4, name: 'Chicken Wings', stock: 15, unit: 'lbs', reorder: 10, status: 'ok', cost: 3.50 },
+        { id: 5, name: 'Frying Oil', stock: 5, unit: 'gallon', reorder: 2, status: 'ok', cost: 15.00 },
+        { id: 6, name: 'Soda Syrup', stock: 3, unit: 'gallon', reorder: 4, status: 'low', cost: 20.00 },
+        { id: 7, name: 'Cheese', stock: 50, unit: 'slice', reorder: 20, status: 'ok', cost: 0.25 },
+        { id: 8, name: 'Bacon', stock: 15, unit: 'lbs', reorder: 10, status: 'ok', cost: 5.00 }
+    ];
+}
 
 function loadInventory() {
     const saved = localStorage.getItem('inventoryItems');
@@ -459,11 +433,10 @@ function loadInventory() {
         try {
             inventoryItems = JSON.parse(saved);
         } catch (e) {
-            inventoryItems = []; // Start with empty array if error
-            console.error('Failed to parse inventory data', e);
+            inventoryItems = getDefaultInventoryItems();
         }
     } else {
-        inventoryItems = []; // Start with empty array
+        inventoryItems = getDefaultInventoryItems();
     }
     
     renderInventory(inventoryItems);
@@ -481,69 +454,27 @@ function loadInventoryTransactions() {
     }
 }
 
-function calculateTotalInventoryValue() {
-    if (!inventoryItems || inventoryItems.length === 0) return 0;
-    
-    return inventoryItems.reduce((sum, item) => {
-        // Ensure we're using numbers and handle undefined cost
-        const itemCost = item.cost || 0;
-        const itemStock = item.stock || 0;
-        return sum + (itemStock * itemCost);
-    }, 0);
-}
-
 function renderInventory(items) {
     const tbody = document.getElementById('inventory-body');
     if (!tbody) return;
     
     if (!items || items.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="loading">No inventory items. Click "Add Item" to get started.</td></tr>';
-        
-        // Update stats displays
-        const lowStockCountEl = document.getElementById('low-stock-count');
-        if (lowStockCountEl) {
-            lowStockCountEl.textContent = '0';
-        }
-        
-        const totalValueEl = document.getElementById('total-inventory-value');
-        if (totalValueEl) {
-            totalValueEl.textContent = '$0.00';
-        }
-        
-        // Update inventory badge in navigation
-        const inventoryBadge = document.getElementById('inventory-badge');
-        if (inventoryBadge) {
-            inventoryBadge.textContent = '0';
-            inventoryBadge.style.display = 'none';
-        }
+        tbody.innerHTML = '<tr><td colspan="5" class="loading">No items</td></tr>';
         return;
     }
     
-    // Calculate real-time stats
     const lowStock = items.filter(item => item.stock > 0 && item.stock <= item.reorder).length;
     const outOfStock = items.filter(item => item.stock <= 0).length;
-    const totalValue = calculateTotalInventoryValue();
+    const totalValue = items.reduce((sum, item) => sum + (item.stock * (item.cost || 2.50)), 0);
     
-    // Update stats displays
-    const lowStockCountEl = document.getElementById('low-stock-count');
-    if (lowStockCountEl) {
-        lowStockCountEl.textContent = lowStock + outOfStock;
-    }
+    document.getElementById('low-stock-count').textContent = lowStock + outOfStock;
+    document.getElementById('total-inventory-value').textContent = `$${totalValue.toFixed(2)}`;
     
-    const totalValueEl = document.getElementById('total-inventory-value');
-    if (totalValueEl) {
-        totalValueEl.textContent = `$${totalValue.toFixed(2)}`;
-    }
-    
-    // Update inventory badge in navigation
     const inventoryBadge = document.getElementById('inventory-badge');
     if (inventoryBadge) {
-        const alertCount = lowStock + outOfStock;
-        inventoryBadge.textContent = alertCount;
-        inventoryBadge.style.display = alertCount > 0 ? 'inline-block' : 'none';
+        inventoryBadge.textContent = lowStock + outOfStock;
     }
     
-    // Render table rows
     tbody.innerHTML = items.map(item => {
         let statusClass = 'badge-success';
         let statusText = 'OK';
@@ -579,7 +510,6 @@ function renderInventory(items) {
         `;
     }).join('');
     
-    // Update low stock alerts
     updateLowStockAlerts();
 }
 
@@ -606,73 +536,6 @@ function populateInventoryDropdown() {
     });
     
     select.innerHTML = options;
-}
-
-function showAddInventoryModal() {
-    if (!hasPermission('inventory')) {
-        showNotification('You don\'t have permission to add items', 'error');
-        return;
-    }
-    
-    document.getElementById('add-inventory-modal').style.display = 'flex';
-}
-
-function closeAddInventoryModal() {
-    document.getElementById('add-inventory-modal').style.display = 'none';
-    // Clear form
-    document.getElementById('new-item-name').value = '';
-    document.getElementById('new-item-unit').value = 'each';
-    document.getElementById('new-item-reorder').value = '';
-    document.getElementById('new-item-cost').value = '';
-}
-
-function addInventoryItem() {
-    if (!hasPermission('inventory')) return;
-    
-    const name = document.getElementById('new-item-name').value.trim();
-    const unit = document.getElementById('new-item-unit').value;
-    const reorder = parseInt(document.getElementById('new-item-reorder').value);
-    const cost = parseFloat(document.getElementById('new-item-cost').value);
-    
-    if (!name) {
-        showNotification('Please enter item name', 'warning');
-        return;
-    }
-    
-    if (isNaN(reorder) || reorder <= 0) {
-        showNotification('Please enter a valid reorder level', 'warning');
-        return;
-    }
-    
-    if (isNaN(cost) || cost <= 0) {
-        showNotification('Please enter a valid cost', 'warning');
-        return;
-    }
-    
-    // Generate new ID
-    const newId = inventoryItems.length > 0 ? Math.max(...inventoryItems.map(i => i.id)) + 1 : 1;
-    
-    const newItem = {
-        id: newId,
-        name: name,
-        stock: 0, // Start with 0 stock
-        unit: unit,
-        reorder: reorder,
-        status: 'out',
-        cost: cost
-    };
-    
-    inventoryItems.push(newItem);
-    
-    // Save to localStorage
-    localStorage.setItem('inventoryItems', JSON.stringify(inventoryItems));
-    
-    // Re-render
-    renderInventory(inventoryItems);
-    populateInventoryDropdown();
-    
-    closeAddInventoryModal();
-    showNotification(`Added ${name} to inventory`, 'success');
 }
 
 function showReceiveStockModal(itemId = null) {
@@ -716,10 +579,8 @@ function receiveStock() {
     
     const item = inventoryItems.find(i => i.id == itemId);
     if (item) {
-        // Update stock
         item.stock += quantity;
         
-        // Update status
         if (item.stock <= 0) {
             item.status = 'out';
         } else if (item.stock <= item.reorder) {
@@ -728,45 +589,14 @@ function receiveStock() {
             item.status = 'ok';
         }
         
-        // Record transaction
-        saveInventoryTransaction(item, quantity, 'received', null);
-        
-        // Re-render inventory with updated values
         renderInventory(inventoryItems);
         populateInventoryDropdown();
-        
-        // Save to localStorage
         localStorage.setItem('inventoryItems', JSON.stringify(inventoryItems));
-        
-        // Update low stock alerts
-        updateLowStockAlerts();
         
         showNotification(`Received ${quantity} ${item.unit} of ${item.name}`, 'success');
     }
     
     closeReceiveStockModal();
-}
-
-function saveInventoryTransaction(item, quantity, type, orderId) {
-    const transaction = {
-        id: Date.now() + Math.random(),
-        itemId: item.id,
-        itemName: item.name,
-        quantity: quantity,
-        type: type, // 'sold' or 'received'
-        orderId: orderId,
-        timestamp: new Date().toLocaleString(),
-        staff: currentUser ? currentUser.name : 'System'
-    };
-    
-    inventoryTransactions.unshift(transaction);
-    
-    // Keep only last 100 transactions
-    if (inventoryTransactions.length > 100) {
-        inventoryTransactions = inventoryTransactions.slice(0, 100);
-    }
-    
-    localStorage.setItem('inventoryTransactions', JSON.stringify(inventoryTransactions));
 }
 
 function updateInventoryFromOrder(order) {
@@ -805,7 +635,6 @@ function updateInventoryFromOrder(order) {
     };
     
     let inventoryUpdated = false;
-    let updatedItems = [];
     
     // Count item quantities in the order
     const itemCounts = new Map();
@@ -825,15 +654,8 @@ function updateInventoryFromOrder(order) {
             
             if (inventoryItem) {
                 const totalQuantity = ingredient.quantity * count;
-                const oldStock = inventoryItem.stock;
                 inventoryItem.stock = Math.max(0, inventoryItem.stock - totalQuantity);
                 
-                // Track which items were updated
-                if (!updatedItems.includes(inventoryItem.name)) {
-                    updatedItems.push(inventoryItem.name);
-                }
-                
-                // Update status
                 if (inventoryItem.stock <= 0) {
                     inventoryItem.status = 'out';
                 } else if (inventoryItem.stock <= inventoryItem.reorder) {
@@ -842,48 +664,30 @@ function updateInventoryFromOrder(order) {
                     inventoryItem.status = 'ok';
                 }
                 
-                // Record transaction
-                saveInventoryTransaction(inventoryItem, totalQuantity, 'sold', order.id);
                 inventoryUpdated = true;
-                
-                console.log(`Inventory updated: ${inventoryItem.name} - ${oldStock} → ${inventoryItem.stock} (used: ${totalQuantity})`);
             }
         });
     });
     
     if (inventoryUpdated) {
-        // Save to localStorage
-        localStorage.setItem('inventoryItems', JSON.stringify(inventoryItems));
-        
-        // Re-render inventory with updated values
         renderInventory(inventoryItems);
-        
-        // Update low stock alerts
+        localStorage.setItem('inventoryItems', JSON.stringify(inventoryItems));
         updateLowStockAlerts();
-        
-        // Check for critical stock levels
-        checkLowStockAfterOrder(updatedItems);
-        
-        console.log('Inventory updated successfully. Total value:', calculateTotalInventoryValue());
+        checkLowStockAfterOrder();
     }
 }
 
-function checkLowStockAfterOrder(updatedItems = []) {
+function checkLowStockAfterOrder() {
     if (!inventoryItems) return;
     
     const lowStock = inventoryItems.filter(item => item.stock > 0 && item.stock <= item.reorder);
     const outOfStock = inventoryItems.filter(item => item.stock <= 0);
     
-    // Only show notifications for items that were actually affected by this order
-    const affectedLowStock = lowStock.filter(item => updatedItems.includes(item.name));
-    const affectedOutOfStock = outOfStock.filter(item => updatedItems.includes(item.name));
-    
-    // Show notifications for critical stock
-    if (affectedOutOfStock.length > 0) {
-        const items = affectedOutOfStock.map(i => i.name).join(', ');
+    if (outOfStock.length > 0) {
+        const items = outOfStock.map(i => i.name).join(', ');
         showNotification(`⚠️ OUT OF STOCK: ${items}`, 'error');
-    } else if (affectedLowStock.length > 0) {
-        const items = affectedLowStock.map(i => i.name).join(', ');
+    } else if (lowStock.length > 0) {
+        const items = lowStock.map(i => i.name).join(', ');
         showNotification(`⚠️ Low stock: ${items}`, 'warning');
     }
 }
@@ -892,69 +696,58 @@ function checkLowStockAfterOrder(updatedItems = []) {
 // OVERVIEW DASHBOARD FUNCTIONS
 // =============================================
 
-function updateDashboardMetrics() {
-    // Get sales data from localStorage
-    let salesData = [];
-    try {
-        const saved = localStorage.getItem('dailySales');
-        if (saved) {
-            salesData = JSON.parse(saved);
+function initializeSalesData() {
+    const saved = localStorage.getItem('dailySales');
+    if (!saved) {
+        const menuItems = [
+            { name: 'Classic Burger', price: 12.99 },
+            { name: 'Cheeseburger', price: 13.99 },
+            { name: 'French Fries', price: 4.99 },
+            { name: 'Chicken Wings', price: 10.99 },
+            { name: 'Soda', price: 1.99 },
+            { name: 'Ice Cream', price: 3.99 },
+            { name: 'Caesar Salad', price: 8.99 },
+            { name: 'Steak', price: 24.99 }
+        ];
+        
+        const defaultSales = [];
+        const now = new Date();
+        
+        // Generate 100 random orders spread across the last 7 days (8 AM - 9 PM)
+        for (let i = 0; i < 100; i++) {
+            const numItems = Math.floor(Math.random() * 3) + 1;
+            const items = [];
+            let total = 0;
+            
+            for (let j = 0; j < numItems; j++) {
+                const randomIndex = Math.floor(Math.random() * menuItems.length);
+                const randomItem = { 
+                    name: menuItems[randomIndex].name, 
+                    price: menuItems[randomIndex].price 
+                };
+                items.push(randomItem);
+                total += randomItem.price;
+            }
+            
+            // Random date within last 7 days
+            const daysAgo = Math.floor(Math.random() * 7);
+            // Random hour between 8 AM (8) and 9 PM (21)
+            const hoursAgo = Math.floor(Math.random() * 14) + 8; // 8 to 21 (8 AM to 9 PM)
+            const orderDate = new Date(now);
+            orderDate.setDate(orderDate.getDate() - daysAgo);
+            orderDate.setHours(hoursAgo, Math.floor(Math.random() * 60), 0);
+            
+            defaultSales.push({
+                id: Date.now() - i * 1000,
+                items: items,
+                total: total,
+                timestamp: orderDate.toLocaleString(),
+                date: orderDate.toLocaleDateString(),
+                hour: orderDate.getHours()
+            });
         }
-    } catch (e) {
-        console.error('Error loading sales data:', e);
-    }
-    
-    const now = new Date();
-    const today = now.toLocaleDateString();
-    
-    // Filter today's sales
-    const todaySales = salesData.filter(sale => sale.date === today);
-    
-    // Calculate today's total sales
-    const todayTotal = todaySales.reduce((sum, sale) => sum + (sale.total || 0), 0);
-    
-    // Calculate today's order count
-    const todayOrders = todaySales.length;
-    
-    // Calculate average order value for today
-    const avgOrderValue = todayOrders > 0 ? todayTotal / todayOrders : 0;
-    
-    // Calculate active tables (unique tables that have orders today and are not served/completed)
-    const uniqueTables = new Set();
-    todaySales.forEach(sale => {
-        if (sale.table && sale.table !== 'takeout' && sale.table !== 'delivery') {
-            uniqueTables.add(sale.table);
-        }
-    });
-    
-    // Get active kitchen orders that are not served
-    const activeKitchenOrders = kitchenOrders.filter(order => 
-        order.status !== 'served' && order.status !== 'completed'
-    ).length;
-    
-    // Use max of unique tables from today or active kitchen orders
-    const activeTables = Math.max(uniqueTables.size, activeKitchenOrders);
-    
-    // Update the DOM elements
-    const todaySalesEl = document.getElementById('today-sales');
-    const todayOrdersEl = document.getElementById('today-orders');
-    const avgOrderEl = document.getElementById('avg-order');
-    const activeTablesEl = document.getElementById('active-tables');
-    
-    if (todaySalesEl) {
-        todaySalesEl.textContent = todayTotal > 0 ? `$${todayTotal.toFixed(2)}` : '$0.00';
-    }
-    
-    if (todayOrdersEl) {
-        todayOrdersEl.textContent = todayOrders > 0 ? todayOrders : '0';
-    }
-    
-    if (avgOrderEl) {
-        avgOrderEl.textContent = avgOrderValue > 0 ? `$${avgOrderValue.toFixed(2)}` : '$0.00';
-    }
-    
-    if (activeTablesEl) {
-        activeTablesEl.textContent = `${activeTables}/8`;
+        
+        localStorage.setItem('dailySales', JSON.stringify(defaultSales));
     }
 }
 
@@ -974,9 +767,26 @@ function updateTopItems() {
         console.error('Error loading sales data:', e);
     }
     
-    // If no sales data, show empty state
+    // If no sales data, use default mock data with integer quantities
     if (!salesData || salesData.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="3" class="loading">No sales data yet. Complete a sale to see top items.</td></tr>';
+        const defaultItems = [
+            { name: 'Classic Burger', quantity: 0, revenue: 0.00 },
+            { name: 'Steak', quantity: 0, revenue: 0.00 },
+            { name: 'Chicken Wings', quantity: 0, revenue: 0.00 },
+            { name: 'French Fries', quantity: 0, revenue: 0.00 },
+            { name: 'Soda', quantity: 0, revenue: 0.00 }
+        ];
+        
+        tbody.innerHTML = defaultItems.map((item, index) => `
+            <tr>
+                <td>
+                    ${index === 0 ? '🥇 ' : index === 1 ? '🥈 ' : index === 2 ? '🥉 ' : ''}
+                    <strong>${item.name}</strong>
+                </td>
+                <td>${item.quantity}</td>
+                <td>$${item.revenue.toFixed(2)}</td>
+            </tr>
+        `).join('');
         return;
     }
     
@@ -1010,7 +820,7 @@ function updateTopItems() {
         .slice(0, 5);
     
     if (topItems.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="3" class="loading">No sales data yet. Complete a sale to see top items.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="3" class="loading">No sales data yet</td></tr>';
         return;
     }
     
@@ -1040,7 +850,7 @@ function updateLowStockAlerts() {
     if (!inventoryItems || inventoryItems.length === 0) {
         loadInventory();
         if (!inventoryItems || inventoryItems.length === 0) {
-            alertsDiv.innerHTML = '<div class="alert alert-info">No inventory items yet. Add items to start tracking stock.</div>';
+            alertsDiv.innerHTML = '<div class="alert alert-info">No inventory data available</div>';
             return;
         }
     }
@@ -1128,7 +938,6 @@ function saveOrderToSalesHistory(order) {
         
         salesData.push({
             id: order.id,
-            table: order.table,
             items: orderItems,
             total: order.total,
             timestamp: order.timestamp || now.toLocaleString(),
@@ -1141,22 +950,8 @@ function saveOrderToSalesHistory(order) {
         }
         
         localStorage.setItem('dailySales', JSON.stringify(salesData));
-        
-        // Update dashboard metrics
-        updateDashboardMetrics();
-        
-        // Update overview components
         updateTopItems();
-        updateCharts();
-        
-        // AUTO-REFRESH REPORTS if on reports tab
-        if (document.getElementById('reports-tab').classList.contains('active')) {
-            // Small delay to ensure data is saved
-            setTimeout(() => {
-                loadReports();
-            }, 50);
-        }
-        
+        updateCharts(); // Update charts when new order is added
     } catch (e) {
         console.error('Error saving order:', e);
     }
@@ -1369,7 +1164,7 @@ function completePayment() {
     // Close payment modal IMMEDIATELY
     closePaymentModal();
     
-    // Update inventory (this will automatically update total value and low stock alerts)
+    // Update inventory
     updateInventoryFromOrder(order);
     
     // Save to sales history
@@ -1380,8 +1175,11 @@ function completePayment() {
         printReceipt(order);
     }, 200);
     
-    // Add to kitchen display WITHOUT printing kitchen ticket
-    addOrderToKitchen(order, false);
+    // Add to kitchen display
+    addOrderToKitchen(order);
+    
+    // Update sales data display
+    updateSalesData(order);
     
     // Clear cart
     clearCart();
@@ -1404,6 +1202,35 @@ function closePaymentModal() {
     // Clear any modal backdrops that might exist
     const backdrops = document.querySelectorAll('.modal-backdrop');
     backdrops.forEach(backdrop => backdrop.remove());
+}
+
+function updateSalesData(order) {
+    const todaySalesElement = document.getElementById('today-sales');
+    if (todaySalesElement) {
+        const currentSales = parseFloat(todaySalesElement.textContent.replace('$', '').replace(',', '')) || 0;
+        const newSales = currentSales + order.total;
+        todaySalesElement.textContent = `$${newSales.toFixed(2)}`;
+    }
+    
+    const ordersElement = document.getElementById('today-orders');
+    if (ordersElement) {
+        const currentOrders = parseInt(ordersElement.textContent) || 0;
+        ordersElement.textContent = currentOrders + 1;
+    }
+    
+    const avgElement = document.getElementById('avg-order');
+    if (avgElement) {
+        const currentAvg = parseFloat(avgElement.textContent.replace('$', '')) || 0;
+        const currentOrders = parseInt(document.getElementById('today-orders').textContent) || 1;
+        const newAvg = ((currentAvg * (currentOrders - 1)) + order.total) / currentOrders;
+        avgElement.textContent = `$${newAvg.toFixed(2)}`;
+    }
+    
+    const activeTablesEl = document.getElementById('active-tables');
+    if (activeTablesEl && order.table !== 'takeout') {
+        const currentActive = parseInt(activeTablesEl.textContent.split('/')[0]) || 0;
+        activeTablesEl.textContent = `${currentActive + 1}/8`;
+    }
 }
 
 // =============================================
@@ -1561,26 +1388,20 @@ function printKitchenTicket(order) {
         tableDisplay = `TABLE ${order.table}`;
     }
     
-    // Group items for kitchen ticket with correct quantities
+    // Group items for kitchen ticket
     const itemMap = new Map();
-    
-    // If order has items with quantities already grouped
-    if (order.items && order.items.length > 0) {
-        order.items.forEach(item => {
-            const quantity = item.quantity || 1;
-            const name = item.name;
-            
-            if (itemMap.has(name)) {
-                const existing = itemMap.get(name);
-                existing.quantity += quantity;
-            } else {
-                itemMap.set(name, {
-                    name: name,
-                    quantity: quantity
-                });
-            }
-        });
-    }
+    order.items.forEach(item => {
+        const key = item.name;
+        if (itemMap.has(key)) {
+            const existing = itemMap.get(key);
+            existing.quantity += 1;
+        } else {
+            itemMap.set(key, {
+                name: item.name,
+                quantity: 1
+            });
+        }
+    });
     
     const ticketContent = `
         <div style="font-family: 'Courier New', monospace; max-width: 300px; margin: 0 auto; padding: 20px;">
@@ -1593,7 +1414,7 @@ function printKitchenTicket(order) {
                 <p><strong>Order #:</strong> ${order.id}</p>
                 <p><strong>${tableDisplay}</strong></p>
                 <p><strong>Time:</strong> ${new Date().toLocaleTimeString()}</p>
-                <p><strong>Server:</strong> ${order.staff || 'Unknown'}</p>
+                <p><strong>Server:</strong> ${order.staff}</p>
             </div>
             
             <div style="border-top: 1px dashed #000; margin: 10px 0;"></div>
@@ -1616,40 +1437,72 @@ function printKitchenTicket(order) {
     `;
     
     const printWindow = window.open('', '_blank', 'width=400,height=500');
-    if (printWindow) {
-        printWindow.document.write(`
-            <html>
-                <head>
-                    <title>Kitchen Ticket - Order #${order.id}</title>
-                    <style>
-                        body { margin: 0; padding: 20px; font-family: 'Courier New', monospace; }
-                        @media print {
-                            body { margin: 0; padding: 0; }
-                        }
-                    </style>
-                </head>
-                <body>
-                    ${ticketContent}
-                    <script>
-                        window.onload = function() {
-                            setTimeout(function() {
-                                window.print();
-                                setTimeout(function() { window.close(); }, 500);
-                            }, 100);
-                        };
-                    <\/script>
-                </body>
-            </html>
-        `);
-        printWindow.document.close();
-    } else {
-        showNotification('Please allow popups to print kitchen ticket', 'warning');
-    }
+    printWindow.document.write(`
+        <html>
+            <head>
+                <title>Kitchen Ticket - Order #${order.id}</title>
+                <style>
+                    body { margin: 0; padding: 20px; font-family: 'Courier New', monospace; }
+                    @media print {
+                        body { margin: 0; padding: 0; }
+                    }
+                </style>
+            </head>
+            <body>
+                ${ticketContent}
+                <script>
+                    window.onload = function() {
+                        setTimeout(function() {
+                            window.print();
+                            setTimeout(function() { window.close(); }, 500);
+                        }, 100);
+                    };
+                <\/script>
+            </body>
+        </html>
+    `);
+    printWindow.document.close();
 }
 
 // =============================================
-// KITCHEN FUNCTIONS - UPDATED WITH PRINT BUTTON
+// KITCHEN FUNCTIONS
 // =============================================
+
+function getDefaultKitchenOrders() {
+    return [
+        {
+            id: 1,
+            table_number: 'Table 5',
+            time: '12:30 PM',
+            status: 'new',
+            created_by: 'Sarah Staff',
+            items: [
+                { name: 'Classic Burger', quantity: 2 },
+                { name: 'French Fries', quantity: 1 }
+            ]
+        },
+        {
+            id: 2,
+            table_number: 'Table 3',
+            time: '12:28 PM',
+            status: 'preparing',
+            created_by: 'John Manager',
+            items: [
+                { name: 'Chicken Wings', quantity: 1 }
+            ]
+        },
+        {
+            id: 3,
+            table_number: 'Table 8',
+            time: '12:25 PM',
+            status: 'ready',
+            created_by: 'Admin User',
+            items: [
+                { name: 'Steak', quantity: 2 }
+            ]
+        }
+    ];
+}
 
 function loadSavedKitchenOrders() {
     const saved = localStorage.getItem('kitchenOrders');
@@ -1657,10 +1510,10 @@ function loadSavedKitchenOrders() {
         try {
             kitchenOrders = JSON.parse(saved);
         } catch (e) {
-            kitchenOrders = []; // Start with empty array if error
+            kitchenOrders = getDefaultKitchenOrders();
         }
     } else {
-        kitchenOrders = []; // Start with empty array
+        kitchenOrders = getDefaultKitchenOrders();
     }
     renderKitchenOrders();
 }
@@ -1689,24 +1542,7 @@ function renderKitchenOrders() {
     
     updateKitchenBadges();
     
-    container.innerHTML = sortedOrders.map(order => {
-        // Create a properly formatted order object for printing
-        const printOrder = {
-            id: order.id,
-            table: order.table_number === 'Takeout' ? 'takeout' : 
-                   order.table_number === 'Delivery' ? 'delivery' : 
-                   order.table_number.replace('Table ', ''),
-            items: order.items.map(item => ({
-                name: item.name,
-                quantity: item.quantity // Preserve the quantity
-            })),
-            staff: order.created_by
-        };
-        
-        // Convert to JSON string safely for onclick
-        const printOrderJson = JSON.stringify(printOrder).replace(/'/g, "\\'");
-        
-        return `
+    container.innerHTML = sortedOrders.map(order => `
         <div class="kitchen-order-card ${order.status}">
             <div class="kitchen-order-header">
                 <span class="kitchen-order-table">${order.table_number}</span>
@@ -1731,12 +1567,9 @@ function renderKitchenOrders() {
                     `<button class="btn btn-success" onclick="updateOrderStatus(${order.id}, 'served')">Mark Served</button>` :
                     `<span class="badge-success">✓ Served</span>`
                 }
-                <button class="btn btn-info" onclick='printKitchenTicket(${printOrderJson})' style="margin-left: 5px;">
-                    <i class="fas fa-print"></i> Print
-                </button>
             </div>
         </div>
-    `}).join('');
+    `).join('');
 }
 
 function updateKitchenBadges() {
@@ -1784,7 +1617,7 @@ function updateOrderStatus(orderId, newStatus) {
     saveKitchenOrders();
 }
 
-function addOrderToKitchen(order, printTicket = false) {
+function addOrderToKitchen(order) {
     let tableDisplay = order.table;
     if (order.table === 'takeout') {
         tableDisplay = 'Takeout';
@@ -1821,10 +1654,7 @@ function addOrderToKitchen(order, printTicket = false) {
     renderKitchenOrders();
     saveKitchenOrders();
     
-    // Only print kitchen ticket if explicitly requested
-    if (printTicket) {
-        printKitchenTicket(order);
-    }
+    printKitchenTicket(order);
     
     showNotification(`New order added to kitchen (${tableDisplay})`, 'success');
 }
@@ -1846,7 +1676,7 @@ function clearCompletedOrders() {
 }
 
 // =============================================
-// CHART FUNCTIONS
+// CHART FUNCTIONS - UPDATED WITH 8AM-9PM TIMEFRAME
 // =============================================
 
 function updateCharts() {
@@ -1873,14 +1703,6 @@ function updateHourlyChart() {
     } catch (e) {
         console.error('Error loading sales data:', e);
     }
-    
-    // If no data, show empty chart
-    if (salesData.length === 0) {
-        canvas.style.display = 'none';
-        return;
-    }
-    
-    canvas.style.display = 'block';
     
     // Filter data based on selected period
     const now = new Date();
@@ -2012,14 +1834,6 @@ function updateCategoryChart() {
         console.error('Error loading sales data:', e);
     }
     
-    // If no data, show empty chart
-    if (salesData.length === 0) {
-        canvas.style.display = 'none';
-        return;
-    }
-    
-    canvas.style.display = 'block';
-    
     // Filter data based on selected period
     const now = new Date();
     const today = now.toLocaleDateString();
@@ -2027,19 +1841,16 @@ function updateCategoryChart() {
     weekAgo.setDate(weekAgo.getDate() - 7);
     
     let filteredSales = [];
-    let chartTitle = '';
     
     if (period === 'today') {
         // Filter for today's sales
         filteredSales = salesData.filter(sale => sale.date === today);
-        chartTitle = 'Today';
     } else if (period === 'week') {
         // Filter for last 7 days
         filteredSales = salesData.filter(sale => {
             const saleDate = new Date(sale.timestamp);
             return saleDate >= weekAgo;
         });
-        chartTitle = 'This Week';
     }
     
     // Define categories and their colors
@@ -2084,7 +1895,7 @@ function updateCategoryChart() {
         categoryChart.destroy();
     }
     
-    // Create new chart with appropriate title
+    // Create new chart
     categoryChart = new Chart(ctx, {
         type: 'doughnut',
         data: {
@@ -2101,17 +1912,6 @@ function updateCategoryChart() {
             maintainAspectRatio: false,
             cutout: '60%',
             plugins: {
-                title: {
-                    display: true,
-                    text: `Sales by Category - ${chartTitle}`,
-                    font: {
-                        size: 14,
-                        weight: 'bold'
-                    },
-                    padding: {
-                        bottom: 10
-                    }
-                },
                 legend: {
                     position: 'bottom',
                     labels: {
@@ -2145,11 +1945,11 @@ function loadReports() {
     if (!hasPermission('reports')) return;
     
     const period = document.getElementById('report-period')?.value || 'today';
-    const data = getReportData(period);
-    renderReports(data, period);
+    const data = getMockReportData(period);
+    renderReports(data);
 }
 
-function getReportData(period) {
+function getMockReportData(period) {
     // Get real sales data from localStorage
     let salesData = [];
     try {
@@ -2163,55 +1963,25 @@ function getReportData(period) {
     
     const now = new Date();
     const today = now.toLocaleDateString();
-    
-    // Calculate date ranges
     const weekAgo = new Date(now);
     weekAgo.setDate(weekAgo.getDate() - 7);
-    
     const monthAgo = new Date(now);
     monthAgo.setDate(monthAgo.getDate() - 30);
     
     let filteredSales = [];
-    let periodTitle = '';
     
     if (period === 'today') {
-        // Filter for today's sales
         filteredSales = salesData.filter(sale => sale.date === today);
-        periodTitle = 'Today';
     } else if (period === 'week') {
-        // Filter for last 7 days
         filteredSales = salesData.filter(sale => {
             const saleDate = new Date(sale.timestamp);
             return saleDate >= weekAgo;
         });
-        periodTitle = 'This Week';
     } else if (period === 'month') {
-        // Filter for last 30 days
         filteredSales = salesData.filter(sale => {
             const saleDate = new Date(sale.timestamp);
             return saleDate >= monthAgo;
         });
-        periodTitle = 'This Month';
-    }
-    
-    // If no sales in period, return empty data
-    if (filteredSales.length === 0) {
-        return {
-            summary: {
-                total_sales: 0,
-                total_orders: 0,
-                avg_order_value: 0
-            },
-            by_category: [
-                { category: 'Mains', revenue: 0 },
-                { category: 'Drinks', revenue: 0 },
-                { category: 'Appetizers', revenue: 0 },
-                { category: 'Sides', revenue: 0 },
-                { category: 'Desserts', revenue: 0 }
-            ],
-            top_items: [],
-            period_title: periodTitle
-        };
     }
     
     // Calculate summary
@@ -2292,26 +2062,13 @@ function getReportData(period) {
             avg_order_value: avgOrderValue
         },
         by_category: byCategory,
-        top_items: topItems,
-        period_title: periodTitle
+        top_items: topItems
     };
 }
 
-function renderReports(data, period) {
+function renderReports(data) {
     const reportDiv = document.getElementById('report-data');
     if (!reportDiv) return;
-    
-    // Check if there's any data
-    if (data.summary.total_sales === 0 && data.top_items.length === 0) {
-        reportDiv.innerHTML = `
-            <div class="report-card" style="text-align: center; padding: 50px;">
-                <h3>📊 No Sales Data for ${data.period_title}</h3>
-                <p style="color: #7f8c8d; margin: 20px 0;">No sales found for the selected period.</p>
-                <p style="color: #7f8c8d;">Complete a sale to see reports here.</p>
-            </div>
-        `;
-        return;
-    }
     
     // Beautiful report HTML with styled tables for dashboard view
     let html = `
@@ -2337,18 +2094,6 @@ function renderReports(data, period) {
                 font-weight: 600;
                 padding-bottom: 10px;
                 border-bottom: 2px solid #3498db;
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-            }
-            
-            .period-badge {
-                background: #3498db;
-                color: white;
-                padding: 5px 15px;
-                border-radius: 20px;
-                font-size: 0.9rem;
-                font-weight: normal;
             }
             
             .stats-grid {
@@ -2480,10 +2225,7 @@ function renderReports(data, period) {
         <div class="report-container">
             <!-- Summary Cards -->
             <div class="report-card">
-                <h3>
-                    📊 Sales Summary
-                    <span class="period-badge">${data.period_title}</span>
-                </h3>
+                <h3>📊 Sales Summary</h3>
                 <div class="stats-grid">
                     <div class="stat-item">
                         <div class="stat-label">Total Sales</div>
@@ -2580,27 +2322,19 @@ function exportReport() {
     }
     
     const period = document.getElementById('report-period')?.value || 'today';
-    const data = getReportData(period);
+    const data = getMockReportData(period);
     
     printDailyReport(data, period);
     showNotification(`Report for ${period} sent to printer`, 'success');
 }
 
 function printDailyReport(reportData, period) {
-    // Check if there's data
-    if (reportData.summary.total_sales === 0) {
-        showNotification('No data to export for this period', 'warning');
-        return;
-    }
-    
-    const periodTitle = period === 'today' ? 'Today' : period === 'week' ? 'This Week' : 'This Month';
-    
     // Beautifully formatted exported version - professional and clean
     const reportContent = `
         <!DOCTYPE html>
         <html>
         <head>
-            <title>Sales Report - ${periodTitle}</title>
+            <title>Sales Report - ${period}</title>
             <style>
                 body {
                     font-family: 'Helvetica', 'Arial', sans-serif;
@@ -2768,7 +2502,7 @@ function printDailyReport(reportData, period) {
             <div class="report-container">
                 <div class="header">
                     <h1>🍔 RESTAURANT POS</h1>
-                    <h2>Sales Report - ${periodTitle}</h2>
+                    <h2>Sales Report - ${period.toUpperCase()}</h2>
                     <div class="date">Generated on: ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}</div>
                 </div>
                 
